@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>AssignThemes</title>
+<style>
+  :root { --ink:#141414; --soft:#585858; --muted:#9b9b9b; --line:#e7e7e7; --fill:#f6f6f6; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 840px; margin: 0 auto; padding: 48px 20px 72px; }
+  h1 { font-size: 1.15rem; font-weight: 650; letter-spacing: 0; margin: 0; }
+  .sub { color: var(--soft); font-size: .9rem; margin: 4px 0 0; }
+
+  .zone { margin-top: 42px; padding-top: 26px; border-top: 1px solid var(--line); }
+  .zlabel { font-size: .72rem; letter-spacing: 0; color: var(--muted); font-weight: 600; margin: 0 0 16px; display: flex; align-items: center; gap: 9px; }
+  .zlabel .n { font-family: ui-monospace, monospace; font-size: .72rem; color: var(--ink); border: 1px solid #d6d6d6; border-radius: 3px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; }
+
+  label { display: block; font-size: .78rem; color: var(--soft); margin: 0 0 6px; font-weight: 500; }
+  label .hint { color: var(--muted); font-weight: 400; }
+  label .hintline { display: block; margin-top: 2px; }
+  label .ex { float: right; font-weight: 500; color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  label .ex:hover { color: #000; }
+  .sp { height: 18px; }
+
+  textarea, input, select { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; border: 1px solid var(--line); border-radius: 6px; padding: 9px 11px; font-size: .85rem; color: var(--ink); background: #fff; }
+  textarea { width: 100%; min-height: 116px; resize: vertical; white-space: pre; line-height: 1.5; }
+  textarea#topics { min-height: 92px; }
+  textarea:focus, input:focus, select:focus { outline: none; border-color: #8c8c8c; }
+  textarea::placeholder { color: #c4c4c4; }
+  input:disabled { background: var(--fill); color: var(--muted); }
+
+  .drop { border: 1px dashed #d6d6d6; border-radius: 6px; padding: 9px; text-align: center; color: var(--muted); font-size: .82rem; cursor: pointer; margin-top: 8px; }
+  .drop.over { border-color: var(--ink); background: var(--fill); color: var(--ink); }
+
+  .controls { display: flex; flex-direction: column; gap: 18px; align-items: stretch; }
+  .control-row { display: flex; gap: 18px; align-items: flex-end; flex-wrap: wrap; }
+  .controls input[type=number] { width: 110px; }
+  .controls select { min-width: 230px; }
+  .caphint { color: var(--muted); font-size: .74rem; font-weight: 400; }
+  button { font: inherit; font-weight: 600; font-size: .9rem; border: 0; border-radius: 6px; padding: 9px 18px; cursor: pointer; }
+  .primary { background: var(--ink); color: #fff; }
+  .primary:hover { background: #000; }
+  .link { background: none; color: var(--soft); padding: 9px 4px; text-decoration: underline; text-underline-offset: 2px; }
+  .link:hover { color: var(--ink); }
+
+  details { margin-top: 16px; }
+  summary { cursor: pointer; color: var(--soft); font-size: .84rem; }
+  summary:hover { color: var(--ink); }
+  .expl { color: var(--soft); font-size: .85rem; margin: 8px 0 0; max-width: 66ch; }
+
+  .placeholder { color: var(--muted); font-size: .9rem; margin: 2px 0; }
+  .summary { font-size: .95rem; margin: 0; }
+  .summary b { font-weight: 650; }
+  .summary .sep { color: #d4d4d4; margin: 0 9px; }
+  .mode { color: var(--muted); font-size: .82rem; margin: 4px 0 0; }
+
+  h2 { font-size: .74rem; letter-spacing: 0; color: var(--muted); font-weight: 600; margin: 28px 0 10px; }
+  .round { font-weight: 650; font-size: .95rem; margin: 18px 0 6px; }
+  .round small { font-weight: 400; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th { text-align: left; font-weight: 500; color: var(--muted); font-size: .74rem; letter-spacing: 0; padding: 0 14px 7px 0; border-bottom: 1px solid var(--line); }
+  td { padding: 9px 14px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: 0; }
+  .tid { font-family: ui-monospace, monospace; font-weight: 650; }
+  .tnm { color: var(--soft); font-weight: 400; }
+  .nm { line-height: 1.5; }
+  .cnt { color: var(--muted); font-size: .76rem; margin-top: 3px; }
+  .won { color: var(--ink); }
+  .muted { color: var(--muted); }
+  .draw { font-size: .7rem; color: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; margin-left: 6px; vertical-align: 1px; }
+  .no { color: var(--muted); font-style: italic; }
+  .reslabel { color: var(--muted); font-size: .72rem; letter-spacing: 0; margin: 0 0 2px; }
+  .resblock + .resblock { margin-top: 8px; }
+
+  .warn { color: var(--soft); font-size: .85rem; margin: 14px 0 0; }
+  .warn b { color: var(--ink); }
+  .warn ul, .invalid ul { margin: 4px 0 0; padding-left: 18px; }
+  .invalid { border-left: 3px solid var(--ink); background: var(--fill); border-radius: 0 6px 6px 0; padding: 11px 14px; color: var(--ink); font-size: .88rem; }
+  .invalid .vt { font-weight: 700; margin-bottom: 4px; }
+  .verify { margin-top: 18px; color: var(--soft); font-size: .85rem; }
+  .verify .vt { color: var(--ink); font-weight: 650; margin-bottom: 4px; }
+  .verify ul { margin: 4px 0 0; padding-left: 18px; }
+  .verify.err { border-left: 3px solid var(--ink); background: var(--fill); border-radius: 0 6px 6px 0; padding: 11px 14px; }
+  .download { margin-top: 18px; }
+  .assumptions { color: var(--soft); font-size: .88rem; margin: 0; padding-left: 20px; }
+  .assumptions li + li { margin-top: 5px; }
+  .assumptions .checks { list-style: none; margin: 6px 0 0; padding-left: 0; counter-reset: check; }
+  .assumptions .checks li { counter-increment: check; margin-top: 3px; }
+  .assumptions .checks li::before { content: "b" counter(check) ") "; color: var(--muted); font-family: ui-monospace, monospace; font-size: .8rem; }
+
+  .foot { color: var(--muted); font-size: .78rem; margin-top: 40px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>AssignThemes</h1>
+    <p class="sub">v1.0.0</p>
+  </header>
+
+  <div class="zone">
+    <div class="zlabel"><span class="n">0</span> Predpoklady</div>
+    <ol class="assumptions" type="a">
+      <li>Všetci študenti v súbore študenti.csv sú riadne zapísaní na predmet.</li>
+      <li>Kontrolované aplikáciou:
+        <ol class="checks">
+          <li>Email je vyplnený.</li>
+          <li>Email sa v zozname neopakuje.</li>
+          <li>Téma 1, Téma 2 a Téma 3 sú celé kladné čísla.</li>
+          <li>Téma 1, Téma 2 a Téma 3 sú v každom riadku navzájom odlišné.</li>
+          <li>Pri rovnakej kapacite sú ID tém v rozsahu 1 až n.</li>
+          <li>Pri kapacite z témy.csv existujú vybrané ID v zozname tém.</li>
+          <li>Kapacity v témy.csv sú celé kladné čísla.</li>
+        </ol>
+      </li>
+      <li>Téma n je celé číslo ID témy, o ktorú má študent záujem. Téma 1 je ID témy s najvyššou prioritou.</li>
+      <li>Takýto formát vie zabezpečiť napríklad Google Forms dotazník s validáciou odpovedí. Výstupom je CSV dokument so stĺpcami Email, Meno a priezvisko, Téma 1, Téma 2, Téma 3.</li>
+    </ol>
+  </div>
+
+  <div class="zone">
+    <div class="zlabel"><span class="n">1</span> Vstup</div>
+
+    <label for="csv">Študenti (CSV)
+      <span class="hint hintline">Email, Meno a priezvisko, Téma 1, Téma 2, Téma 3.</span>
+    </label>
+    <textarea id="csv" spellcheck="false"></textarea>
+    <div class="drop" id="drop">Potiahnite <b>študenti.csv</b> alebo kliknite a vyberte</div>
+    <input type="file" id="file" class="hidden" accept=".csv,text/csv" />
+
+    <div class="sp"></div>
+
+    <div id="topicsBlock" class="hidden">
+      <label for="topics"><span class="ex" id="ex">vložiť ukážku</span>Témy (CSV)
+        <span class="hint hintline">ID, Kapacita.</span>
+      </label>
+      <textarea id="topics" spellcheck="false"></textarea>
+      <div class="drop" id="drop2">Potiahnite <b>témy.csv</b> alebo kliknite a vyberte</div>
+      <input type="file" id="file2" class="hidden" accept=".csv,text/csv" />
+    </div>
+  </div>
+
+  <div class="zone">
+    <div class="zlabel"><span class="n">2</span> Nastavenia</div>
+    <div class="controls">
+      <div class="control-row">
+        <div>
+          <label for="capMode">Kapacita tém</label>
+          <select id="capMode">
+            <option value="uniform">Rovnaká kapacita</option>
+            <option value="topics">Kapacita z témy.csv</option>
+          </select>
+        </div>
+        <div id="capBlock">
+          <label for="cap">Kapacita na tému <span class="caphint" id="caphint"></span></label>
+          <input type="number" id="cap" value="1" min="1" max="999" />
+        </div>
+        <div id="rangeBlock">
+          <label for="topicMax">Rozsah ID tém <span class="caphint">1 až n (vrátane)</span></label>
+          <input type="number" id="topicMax" value="10" min="1" max="9999" />
+        </div>
+      </div>
+      <div class="control-row">
+        <div>
+          <label for="algo">Algoritmus</label>
+          <select id="algo">
+            <option value="optimal" selected>Optimalizačný výber</option>
+            <option value="round">Trojkolové prioritné losovanie</option>
+          </select>
+        </div>
+        <div><label for="seed">Seed</label><input type="number" id="seed" placeholder="náhodný" /></div>
+        <div><button class="primary" id="run">Rozdeliť</button></div>
+        <div><button class="link" id="clear">Vyčistiť</button></div>
+      </div>
+    </div>
+    <details>
+      <summary>Ako algoritmus funguje</summary>
+      <p class="expl" id="algoExpl"></p>
+    </details>
+    <div class="verify" id="verify">
+      <div class="vt">Overenie</div>
+      <p class="placeholder">Overenie sa spustí po kliknutí na <b>Rozdeliť</b>.</p>
+    </div>
+  </div>
+
+  <div class="zone">
+    <div class="zlabel"><span class="n">3</span> Priebeh</div>
+    <div id="out"><p class="placeholder">Zatiaľ žiadny výstup. Vyplňte vstup a stlačte <b>Rozdeliť</b>.</p></div>
+  </div>
+
+  <div class="zone">
+    <div class="zlabel"><span class="n">4</span> Výstup</div>
+    <div id="final"><p class="placeholder">Zatiaľ žiadne finálne pridelenie.</p></div>
+  </div>
+
+</div>
+
+<script>
+"use strict";
+
+const EXAMPLE_STUDENTS =
+`Email,Meno a priezvisko,Téma 1,Téma 2,Téma 3
+xjozas@stuba.sk,Samuel Jozas,4,8,2
+xcabu@stuba.sk,Had Sabu,6,9,3
+xnovak@stuba.sk,Ján Novák,4,2,8
+xkovac@stuba.sk,Mária Kováčová,4,6,1
+xhorvath@stuba.sk,Peter Horváth,8,2,4`;
+
+const EXAMPLE_TOPICS =
+`ID,Kapacita
+1,1
+2,2
+3,1
+4,1
+6,2
+8,1
+9,1`;
+
+const PLACEHOLDER = '<p class="placeholder">Zatiaľ žiadny výstup. Vyplňte vstup a stlačte <b>Rozdeliť</b>.</p>';
+const ALGO_TEXT = {
+  round: "<b>Trojkolové prioritné losovanie</b> rieši postupne 1., 2. a 3. prioritu. V každom kole súťažia iba zatiaľ nepriradení študenti. Ak je záujemcov o tému viac ako voľných miest, víťazi sa losujú podľa seedu a ostatní postupujú do ďalšieho kola.",
+  optimal: "<b>Optimalizačný výber</b> pozerá všetky voľby naraz. Najprv maximalizuje počet pridelených študentov, potom celkové skóre preferencií: 1. priorita = 3 body, 2. priorita = 2 body, 3. priorita = 1 bod. Pri rovnakých možnostiach rozhoduje seed."
+};
+
+const $ = (id) => document.getElementById(id);
+$("csv").value = EXAMPLE_STUDENTS;
+$("topics").placeholder = EXAMPLE_TOPICS;
+
+function parseCsv(text) {
+  const delimiter = detectDelimiter(text);
+  const out = []; let row = [], field = "", q = false;
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const endF = () => { row.push(field); field = ""; };
+  const endR = () => { out.push(row); row = []; };
+  while (i < text.length) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i+1] === '"') { field += '"'; i += 2; } else { q = false; i++; } }
+      else { field += c; i++; }
+    } else if (c === '"') { q = true; i++; }
+    else if (c === delimiter) { endF(); i++; }
+    else if (c === "\r") { i++; }
+    else if (c === "\n") { endF(); endR(); i++; }
+    else { field += c; i++; }
+  }
+  if (field.length || row.length) { endF(); endR(); }
+  return out.filter(r => !(r.length === 1 && r[0].trim() === ""));
+}
+
+function detectDelimiter(text) {
+  const first = (text.replace(/^\ufeff/, "").split(/\r?\n/).find(l => l.trim()) || "");
+  let comma = 0, semicolon = 0, q = false;
+  for (let i = 0; i < first.length; i++) {
+    const c = first[i];
+    if (c === '"') {
+      if (q && first[i + 1] === '"') i++;
+      else q = !q;
+    } else if (!q && c === ",") comma++;
+    else if (!q && c === ";") semicolon++;
+  }
+  return semicolon > comma ? ";" : ",";
+}
+
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+const noDia = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+const positiveInt = (v) => {
+  const raw = (v == null ? "" : String(v)).trim();
+  return /^[1-9]\d*$/.test(raw) ? Number(raw) : null;
+};
+
+function readStudents(text) {
+  const rows = parseCsv(text);
+  if (rows.length < 2) throw new Error("Študenti: CSV nemá dátové riadky.");
+  const header = rows[0].map(h => noDia(h.trim().toLowerCase()));
+  const find = (kw) => header.findIndex(h => kw.some(k => h.includes(k)));
+  let eIdx = find(["email", "mail"]);
+  let nIdx = find(["meno", "priezvisko", "name"]);
+  let tIdx = header.map((h, i) => /(tema|priorit)\s*[123]?/.test(h) ? i : -1).filter(i => i >= 0);
+  if (eIdx < 0) eIdx = 0;
+  if (nIdx < 0) nIdx = 1;
+  if (tIdx.length < 3) tIdx = [2, 3, 4];
+  tIdx = tIdx.slice(0, 3);
+
+  const students = [], warnings = [], errors = [], seen = new Set();
+  for (let r = 1; r < rows.length; r++) {
+    const cells = rows[r];
+    const email = (cells[eIdx] || "").trim().toLowerCase();
+    const name = (cells[nIdx] || "").trim();
+    const rowLabel = "Riadok " + (r + 1);
+    if (!email) { errors.push(rowLabel + ": chýba email."); continue; }
+    if (seen.has(email)) { errors.push(email + ": duplicitný email."); continue; }
+    seen.add(email);
+
+    const picks = [];
+    let validPicks = true;
+    for (let i = 0; i < tIdx.length; i++) {
+      const raw = (cells[tIdx[i]] || "").trim();
+      const p = positiveInt(raw);
+      if (p == null) {
+        errors.push(email + ": Téma " + (i + 1) + " musí byť celé kladné číslo.");
+        validPicks = false;
+      } else {
+        picks.push(p);
+      }
+    }
+    if (!validPicks) continue;
+    if (new Set(picks).size < picks.length) {
+      errors.push(email + ": Téma 1, Téma 2 a Téma 3 musia byť navzájom odlišné.");
+      continue;
+    }
+    students.push({ email, name, picks });
+  }
+  return { students, warnings, errors };
+}
+
+function readTopics(text) {
+  const rows = parseCsv(text);
+  const errors = [];
+  if (!rows.length) return { map: new Map(), errors: ["Témy: súbor je prázdny."] };
+  const r0 = rows[0].map(c => noDia(c.trim().toLowerCase()));
+  const headerish = !/^\d+$/.test((rows[0][0] || "").trim());
+  let start = 0, idI = 0, capI = 1;
+  if (headerish) {
+    start = 1;
+    const f = (kw, d) => { const i = r0.findIndex(h => kw.some(k => h.includes(k))); return i < 0 ? d : i; };
+    idI = f(["id"], 0); capI = f(["kapac", "capac"], 1);
+  }
+  const map = new Map();
+  for (let r = start; r < rows.length; r++) {
+    const c = rows[r];
+    const idRaw = (c[idI] || "").trim();
+    if (idRaw === "") continue;
+    const id = positiveInt(idRaw);
+    if (id == null) { errors.push('Témy, riadok ' + (r + 1) + ': ID musí byť celé kladné číslo.'); continue; }
+    const capRaw = (c[capI] || "").trim();
+    const cap = positiveInt(capRaw);
+    if (cap == null) { errors.push('Téma #' + id + ': kapacita musí byť celé kladné číslo.'); continue; }
+    if (map.has(id)) { errors.push('Téma #' + id + ': duplicitné ID v zozname tém.'); continue; }
+    map.set(id, { capacity: cap, name: "" });
+  }
+  if (map.size === 0 && !errors.length) errors.push("Témy: žiadne platné riadky.");
+  return { map, errors };
+}
+
+function distribute(students, topicMap, rng) {
+  const remaining = new Map([...topicMap].map(([id, t]) => [id, t.capacity]));
+  const byEmail = new Map(students.map(s => [s.email, s]));
+  const assigned = new Map();
+  const unassigned = new Set(students.map(s => s.email));
+  const rounds = [];
+
+  for (let round = 1; round <= 3; round++) {
+    const groups = new Map();
+    for (const email of unassigned) {
+      const t = byEmail.get(email).picks[round - 1];
+      if (t == null || !topicMap.has(t)) continue;
+      const l = groups.get(t); if (l) l.push(email); else groups.set(t, [email]);
+    }
+    const log = { round, topics: [] };
+    for (const t of [...groups.keys()].sort((a, b) => a - b)) {
+      const emails = groups.get(t);
+      const cap = remaining.get(t) || 0;
+      const totalCap = (topicMap.get(t) || {}).capacity || 0;
+      const entry = { topic: t, capacity: totalCap, remainingBefore: cap, inRunning: [...emails], chosen: [], notChosen: [], reason: null };
+      if (cap <= 0) { entry.reason = "no_capacity"; entry.notChosen = [...emails]; log.topics.push(entry); continue; }
+      let chosen;
+      if (emails.length <= cap) chosen = [...emails];
+      else {
+        const sh = [...emails];
+        for (let i = sh.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1));[sh[i], sh[j]] = [sh[j], sh[i]]; }
+        chosen = sh.slice(0, cap);
+      }
+      const cset = new Set(chosen);
+      entry.chosen = chosen; entry.notChosen = emails.filter(e => !cset.has(e));
+      log.topics.push(entry);
+      for (const e of chosen) { assigned.set(e, { topic: t, round }); unassigned.delete(e); }
+      remaining.set(t, cap - chosen.length);
+    }
+    rounds.push(log);
+  }
+  return { algorithm: "round", assigned, rounds };
+}
+
+function preferenceRank(picks, topicId) {
+  const i = picks.findIndex(p => p === topicId);
+  return i < 0 ? null : i + 1;
+}
+
+function distributeOptimal(students, topicMap, rng) {
+  const topicIds = [...topicMap.keys()].sort((a, b) => a - b);
+  const source = 0;
+  const studentOffset = 1;
+  const topicOffset = studentOffset + students.length;
+  const sink = topicOffset + topicIds.length;
+  const graph = Array.from({ length: sink + 1 }, () => []);
+  const candidateEdges = [];
+
+  function addEdge(from, to, cap, cost, meta) {
+    const fwd = { to, rev: graph[to].length, cap, cost, meta };
+    const rev = { to: from, rev: graph[from].length, cap: 0, cost: -cost, meta: null };
+    graph[from].push(fwd);
+    graph[to].push(rev);
+    return fwd;
+  }
+
+  for (let i = 0; i < students.length; i++) addEdge(source, studentOffset + i, 1, 0, null);
+  for (let i = 0; i < topicIds.length; i++) {
+    const t = topicMap.get(topicIds[i]);
+    addEdge(topicOffset + i, sink, t.capacity, 0, null);
+  }
+
+  const topicIndex = new Map(topicIds.map((id, i) => [id, i]));
+  for (let si = 0; si < students.length; si++) {
+    const s = students[si];
+    const bestRank = new Map();
+    for (let i = 0; i < s.picks.length; i++) {
+      const topicId = s.picks[i];
+      if (!topicMap.has(topicId)) continue;
+      if (!bestRank.has(topicId)) bestRank.set(topicId, i + 1);
+    }
+    for (const [topicId, rank] of bestRank) {
+      const score = 4 - rank;
+      const tie = Math.floor(rng() * 1000);
+      const cost = -(score * 1000000 + tie);
+      const edge = addEdge(studentOffset + si, topicOffset + topicIndex.get(topicId), 1, cost, {
+        email: s.email,
+        topic: topicId,
+        rank,
+        score
+      });
+      candidateEdges.push(edge);
+    }
+  }
+
+  let flow = 0;
+  let minCost = 0;
+  while (true) {
+    const dist = Array(graph.length).fill(Infinity);
+    const prevNode = Array(graph.length).fill(-1);
+    const prevEdge = Array(graph.length).fill(-1);
+    const inQueue = Array(graph.length).fill(false);
+    const q = [source];
+    dist[source] = 0;
+    inQueue[source] = true;
+
+    for (let qi = 0; qi < q.length; qi++) {
+      const v = q[qi];
+      inQueue[v] = false;
+      for (let ei = 0; ei < graph[v].length; ei++) {
+        const e = graph[v][ei];
+        if (e.cap <= 0) continue;
+        const nd = dist[v] + e.cost;
+        if (nd < dist[e.to]) {
+          dist[e.to] = nd;
+          prevNode[e.to] = v;
+          prevEdge[e.to] = ei;
+          if (!inQueue[e.to]) {
+            q.push(e.to);
+            inQueue[e.to] = true;
+          }
+        }
+      }
+    }
+    if (!Number.isFinite(dist[sink])) break;
+
+    let add = Infinity;
+    for (let v = sink; v !== source; v = prevNode[v]) {
+      const e = graph[prevNode[v]][prevEdge[v]];
+      add = Math.min(add, e.cap);
+    }
+    for (let v = sink; v !== source; v = prevNode[v]) {
+      const e = graph[prevNode[v]][prevEdge[v]];
+      e.cap -= add;
+      graph[e.to][e.rev].cap += add;
+      minCost += e.cost * add;
+    }
+    flow += add;
+  }
+
+  const assigned = new Map();
+  let score = 0;
+  for (const edge of candidateEdges) {
+    if (edge.cap === 0 && edge.meta) {
+      assigned.set(edge.meta.email, { topic: edge.meta.topic, round: edge.meta.rank });
+      score += edge.meta.score;
+    }
+  }
+
+  const groups = topicIds.map(topic => ({
+    topic,
+    capacity: topicMap.get(topic).capacity,
+    chosen: students.filter(s => assigned.get(s.email)?.topic === topic).map(s => s.email),
+    candidates: students.filter(s => s.picks.includes(topic)).map(s => s.email)
+  })).filter(g => g.chosen.length || g.candidates.length);
+
+  return { algorithm: "optimal", assigned, rounds: [], groups, score, flow, minCost };
+}
+
+const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const plural = (n, one, few, many) => n === 1 ? one : (n >= 2 && n <= 4 ? few : many);
+function nameList(students, list) {
+  if (!list.length) return "<span class='muted'>bez záznamu</span>";
+  const m = new Map(students.map(s => [s.email, s.name || s.email]));
+  return list.map(e => "<div class='nm'>" + esc(m.get(e)) + "</div>").join("");
+}
+function tlabel(topicMap, id) {
+  const t = topicMap.get(id);
+  return "<span class='tid'>#" + id + "</span>" + (t && t.name ? " <span class='tnm'>" + esc(t.name) + "</span>" : "");
+}
+
+function rankedNameList(students, list, assigned) {
+  if (!list.length) return "<span class='muted'>bez záznamu</span>";
+  const m = new Map(students.map(s => [s.email, s.name || s.email]));
+  return list.map(e => {
+    const a = assigned.get(e);
+    const rank = a ? " <span class='muted'>(" + a.round + ". priorita)</span>" : "";
+    return "<div class='nm'>" + esc(m.get(e)) + rank + "</div>";
+  }).join("");
+}
+
+function renderInvalid(errors, warnings) {
+  let h = '<div class="invalid"><div class="vt">Rozdelenie sa nespustilo. Skontrolujte vstup (' + errors.length + ')</div><ul>' +
+    errors.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul></div>";
+  if (warnings.length) h += '<div class="warn"><b>Ďalšie upozornenia:</b><ul>' + warnings.map(w => "<li>" + esc(w) + "</li>").join("") + "</ul></div>";
+  $("out").innerHTML = h;
+  $("final").innerHTML = '<p class="placeholder">Zatiaľ žiadne finálne pridelenie.</p>';
+}
+
+function renderVerification(errors, checks) {
+  const box = $("verify");
+  if (errors.length) {
+    box.className = "verify err";
+    box.innerHTML = '<div class="vt">Overenie</div><div>Našli sa chyby (' + errors.length + ')</div><ul>' +
+      errors.map(e => "<li>" + esc(e) + "</li>").join("") + "</ul>";
+    return;
+  }
+  box.className = "verify";
+  box.innerHTML = '<div class="vt">Overenie</div><div>Vstup je v poriadku.</div><ul>' +
+    checks.map(c => "<li>" + esc(c) + "</li>").join("") + "</ul>";
+}
+
+function render(students, topicMap, mode, seed, result, warnings) {
+  const { assigned, rounds } = result;
+  const total = students.length, got = assigned.size;
+  const totalCap = [...topicMap.values()].reduce((s, t) => s + t.capacity, 0);
+  const algoName = result.algorithm === "optimal" ? "optimalizačný výber" : "trojkolové prioritné losovanie";
+  let progress = "";
+  let final = "";
+
+  progress += '<div class="summary">' +
+    "<b>" + total + "</b> študentov<span class='sep'>, </span>" +
+    "<b>" + got + "</b> pridelených<span class='sep'>, </span>" +
+    "<b>" + (total - got) + "</b> nepriradených<span class='sep'>, </span>seed <b>" + seed + "</b>" +
+    (result.algorithm === "optimal" ? "<span class='sep'>, </span>skóre <b>" + result.score + "</b>" : "") + "</div>";
+  progress += '<div class="mode">' + (mode === "topics"
+    ? "režim témy.csv, " + topicMap.size + " tém, kapacita spolu " + totalCap
+    : "režim jednoduchý, kapacita " + [...topicMap.values()][0].capacity + " na tému") +
+    ", " + algoName + "</div>";
+  if (warnings.length) {
+    progress += '<div class="warn"><b>Upozornenia:</b><ul>' + warnings.map(w => "<li>" + esc(w) + "</li>").join("") + "</ul></div>";
+  }
+
+  if (result.algorithm === "optimal") {
+    progress += '<h2>Pridelenie podľa tém</h2>';
+    progress += '<table><thead><tr><th style="width:28%">Téma</th><th>Pridelení</th><th style="width:34%">Kandidáti</th></tr></thead><tbody>';
+    for (const g of result.groups) {
+      progress += "<tr><td>" + tlabel(topicMap, g.topic) +
+        "<div class='cnt'>" + g.chosen.length + "/" + g.capacity + " obsadené</div></td>";
+      progress += "<td class='won'>" + rankedNameList(students, g.chosen, assigned) + "</td>";
+      progress += "<td class='muted'>" + nameList(students, g.candidates) + "</td></tr>";
+    }
+    progress += "</tbody></table>";
+  } else {
+    progress += '<h2>Priebeh po kolách</h2>';
+    for (const r of rounds) {
+      if (!r.topics.length) continue;
+      progress += '<div class="round">' + r.round + ". kolo <small>, priorita " + r.round + "</small></div>";
+      progress += '<table><thead><tr><th style="width:28%">Téma</th><th>Súťažili</th><th style="width:34%">Výsledok</th></tr></thead><tbody>';
+      for (const t of r.topics) {
+        const draw = t.inRunning.length > t.chosen.length && t.reason !== "no_capacity";
+        const cap = t.capacity ?? ((topicMap.get(t.topic) || {}).capacity || 0);
+        const free = t.remainingBefore ?? 0;
+        let rowResult = "";
+        if (t.reason === "no_capacity") {
+          rowResult = "<div class='no'>bez voľného miesta</div>";
+        } else {
+          rowResult = "<div class='resblock'><div class='reslabel'>Pridelené</div><div class='won'>" + nameList(students, t.chosen) + "</div></div>";
+          if (t.notChosen.length) {
+            rowResult += "<div class='resblock'><div class='reslabel'>Nepostúpili</div><div class='muted'>" + nameList(students, t.notChosen) + "</div></div>";
+          }
+        }
+        progress += "<tr><td>" + tlabel(topicMap, t.topic) + (draw ? "<span class='draw'>žreb</span>" : "") +
+          "<div class='cnt'>" + t.inRunning.length + " " + plural(t.inRunning.length, "záujemca", "záujemcovia", "záujemcov") +
+          ", voľné " + free + "/" + cap + "</div></td>";
+        progress += "<td>" + nameList(students, t.inRunning) + "</td>";
+        progress += "<td>" + rowResult + "</td></tr>";
+      }
+      progress += "</tbody></table>";
+    }
+  }
+
+  final += '<table><thead><tr><th>Študent</th><th style="width:42%">Pridelená téma</th><th style="width:96px">Priorita</th></tr></thead><tbody>';
+  for (const s of students) {
+    const a = assigned.get(s.email);
+    final += "<tr><td>" + esc(s.name || "bez mena") + " <span class='muted'>" + esc(s.email) + "</span></td>";
+    if (a) final += "<td>" + tlabel(topicMap, a.topic) + "</td><td>" + a.round + ". priorita</td>";
+    else final += "<td class='no'>nepriradený</td><td class='muted'>bez priority</td>";
+    final += "</tr>";
+  }
+  final += "</tbody></table>";
+  final += '<div class="download"><button class="link" id="dl" style="padding-left:0">Stiahnuť výsledok (CSV)</button></div>';
+
+  $("out").innerHTML = progress;
+  $("final").innerHTML = final;
+  $("dl").onclick = () => downloadResult(students, topicMap, assigned);
+}
+
+function downloadResult(students, topicMap, assigned) {
+  const cell = (v) => {
+    const s = v == null ? "" : String(v);
+    return /[;"\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lines = [["Email", "Meno a priezvisko", "Pridelená téma ID", "Priorita"]];
+  for (const s of students) {
+    const a = assigned.get(s.email);
+    lines.push([s.email, s.name, a ? a.topic : "", a ? a.round : ""]);
+  }
+  const csv = "\ufeff" + lines.map(r => r.map(cell).join(";")).join("\r\n") + "\r\n";
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "rozdelenie-tem.csv"; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function run() {
+  let parsed;
+  try {
+    parsed = readStudents($("csv").value);
+  } catch (e) {
+    renderVerification([e.message], []);
+    $("out").innerHTML = '<p class="placeholder">Rozdelenie sa nespustilo. Opravte chyby v časti Overenie.</p>';
+    $("final").innerHTML = '<p class="placeholder">Zatiaľ žiadne finálne pridelenie.</p>';
+    return;
+  }
+
+  const warnings = [...parsed.warnings];
+  const errors = [...parsed.errors];
+  const checks = [];
+  const capMode = $("capMode").value;
+  const topicsText = $("topics").value.trim();
+  let topicMap, mode;
+
+  if (!parsed.students.length) {
+    errors.push("Študentské CSV neobsahuje žiadny platný záznam.");
+  }
+
+  if (capMode === "topics") {
+    if (!topicsText) {
+      errors.push("Režim Kapacita z témy.csv vyžaduje súbor tém.");
+      topicMap = new Map();
+    } else {
+      mode = "topics";
+      const t = readTopics(topicsText);
+      topicMap = t.map;
+      errors.push(...t.errors);
+      if (topicMap.size) {
+        for (const s of parsed.students) {
+          const bad = s.picks.filter(p => !topicMap.has(p));
+          for (const p of bad) errors.push(s.email + ": téma " + p + " neexistuje v témy.csv.");
+        }
+      }
+    }
+  } else {
+    mode = "simple";
+    const cap = positiveInt($("cap").value);
+    const topicMax = positiveInt($("topicMax").value);
+    if (cap == null) errors.push("Kapacita na tému musí byť celé kladné číslo.");
+    if (topicMax == null) errors.push("Rozsah ID tém musí byť celé kladné číslo.");
+    if (topicMax != null) {
+      for (const s of parsed.students) {
+        const bad = s.picks.filter(p => p > topicMax);
+        for (const p of bad) errors.push(s.email + ": téma " + p + " je mimo rozsahu 1 až " + topicMax + ".");
+      }
+    }
+    topicMap = cap != null && topicMax != null
+      ? new Map(Array.from({ length: topicMax }, (_, i) => [i + 1, { capacity: cap, name: "" }]))
+      : new Map();
+  }
+
+  if (errors.length) {
+    renderVerification(errors, []);
+    $("out").innerHTML = '<p class="placeholder">Rozdelenie sa nespustilo. Opravte chyby v časti Overenie.</p>';
+    $("final").innerHTML = '<p class="placeholder">Zatiaľ žiadne finálne pridelenie.</p>';
+    return;
+  }
+
+  checks.push("Email je vyplnený a bez duplicít.");
+  checks.push("Téma 1, Téma 2 a Téma 3 sú celé kladné čísla.");
+  checks.push("Téma 1, Téma 2 a Téma 3 sú v každom riadku navzájom odlišné.");
+  if (capMode === "topics") {
+    checks.push("ID tém z volieb existujú v témy.csv.");
+    checks.push("Kapacity v témy.csv sú celé kladné čísla.");
+  } else {
+    checks.push("ID tém z volieb sú v rozsahu 1 až " + $("topicMax").value.trim() + ".");
+    checks.push("Rovnaká kapacita na tému je celé kladné číslo.");
+  }
+  renderVerification([], checks);
+
+  let seed = $("seed").value.trim();
+  seed = seed === "" ? Math.floor(Math.random() * 1e9) : (Number(seed) | 0);
+  $("seed").value = seed;
+  const rng = mulberry32(seed);
+  const result = $("algo").value === "optimal"
+    ? distributeOptimal(parsed.students, topicMap, rng)
+    : distribute(parsed.students, topicMap, rng);
+  render(parsed.students, topicMap, mode, seed, result, warnings);
+}
+
+function syncCap() {
+  const fromTopics = $("capMode").value === "topics";
+  $("topicsBlock").classList.toggle("hidden", !fromTopics);
+  $("capBlock").classList.toggle("hidden", fromTopics);
+  $("rangeBlock").classList.toggle("hidden", fromTopics);
+  $("cap").disabled = fromTopics;
+  $("topicMax").disabled = fromTopics;
+  $("caphint").textContent = fromTopics ? "(z témy.csv)" : "";
+}
+$("capMode").addEventListener("change", syncCap);
+
+function syncAlgorithmDescription() {
+  $("algoExpl").innerHTML = ALGO_TEXT[$("algo").value] || ALGO_TEXT.round;
+}
+$("algo").addEventListener("change", syncAlgorithmDescription);
+
+$("run").onclick = run;
+$("clear").onclick = () => {
+  $("csv").value = "";
+  $("topics").value = "";
+  $("seed").value = "";
+  $("capMode").value = "uniform";
+  $("algo").value = "optimal";
+  $("topicMax").value = "10";
+  syncCap();
+  syncAlgorithmDescription();
+  $("verify").className = "verify";
+  $("verify").innerHTML = '<div class="vt">Overenie</div><p class="placeholder">Overenie sa spustí po kliknutí na <b>Rozdeliť</b>.</p>';
+  $("out").innerHTML = PLACEHOLDER;
+  $("final").innerHTML = '<p class="placeholder">Zatiaľ žiadne finálne pridelenie.</p>';
+};
+$("ex").onclick = () => { $("topics").value = EXAMPLE_TOPICS; $("capMode").value = "topics"; syncCap(); };
+
+function wireDrop(dropId, fileId, targetId) {
+  const drop = $(dropId), file = $(fileId);
+  drop.onclick = () => file.click();
+  file.onchange = () => { if (file.files[0]) load(file.files[0], targetId); };
+  ["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (f) load(f, targetId); });
+}
+function load(f, targetId) {
+  const rd = new FileReader();
+  rd.onload = () => {
+    $(targetId).value = rd.result;
+    if (targetId === "topics") $("capMode").value = "topics";
+    syncCap();
+  };
+  rd.readAsText(f, "utf-8");
+}
+wireDrop("drop", "file", "csv");
+wireDrop("drop2", "file2", "topics");
+syncCap();
+syncAlgorithmDescription();
+</script>
+</body>
+</html>
