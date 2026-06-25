@@ -1,0 +1,1920 @@
+<!DOCTYPE html>
+<html lang="sk" class="pf-booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ReviewAPP</title>
+<script>
+  /* No-flash failsafe: the page boots with class "pf-booting" (set on <html> above), which
+     hides the chrome until init() has applied the persisted state — see the pf-booting CSS.
+     init() removes the class itself; this listener is the backstop so a script error can
+     NEVER leave the app stuck invisible. DOMContentLoaded fires after the body init script. */
+  document.addEventListener("DOMContentLoaded", function () {
+    document.documentElement.classList.remove("pf-booting");
+  });
+</script>
+<style>
+  /* ============================================================
+     Posudok Factory
+     Single-file app: form (left) + 1:1 A4 live preview (right).
+     Export via browser Print -> Save as PDF (preview === printout).
+     ============================================================ */
+
+  :root {
+    --bg: #f5f5f7;             /* Apple light-gray canvas */
+    --panel: #ffffff;
+    --ink: #1d1d1f;            /* Apple near-black */
+    --muted: #6e6e73;          /* Apple secondary gray */
+    --line: rgba(0,0,0,.10);   /* hairline */
+    --accent: #0071e3;         /* Apple system blue */
+    --accent-soft: rgba(0,113,227,.14);
+    --danger: #d70015;         /* red, AA contrast on white */
+    --radius: 12px;
+    --seg-track: #e8e8ed;      /* iOS segmented-control track */
+    --seg-thumb: #ffffff;
+    /* Document geometry from the original .docx (A4, twips -> mm) */
+    --page-w: 210mm;
+    --page-h: 297mm;
+    --mar-top: 16mm;
+    --mar-right: 20mm;
+    --mar-bottom: 15mm;
+    --mar-left: 25mm;
+  }
+
+  * { box-sizing: border-box; }
+
+  /* ---------- No-flash-of-default-state (FOUC) guard ----------
+     On load the static HTML shows the DEFAULT state (Bakalárska active, Slovak text,
+     extra-field visible…). The end-of-body script then applies the PERSISTED state from
+     localStorage, which would otherwise be a visible swap — amplified by the .seg transition
+     (e.g. an animated "Bakalárska → Diplomová" flicker on every refresh). While <html> has
+     class "pf-booting" we hide the chrome and freeze all transitions; init() removes the class
+     after the real state is applied, so the first visible paint is already correct. Layout is
+     preserved (visibility, not display) so pagination still measures correctly while hidden. */
+  html.pf-booting .topbar,
+  html.pf-booting .workspace { visibility: hidden; }
+  html.pf-booting * { transition: none !important; animation: none !important; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, Roboto, Arial, sans-serif;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  /* App shell: on desktop the body is exactly the viewport height and never scrolls — the form
+     and preview panels scroll internally. (Stacked/mobile reverts to normal page scroll below.)
+     This avoids the fragile calc(100vh - <topbar px>) and any scrollbar-induced body overflow. */
+  body {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ---------- Top bar ---------- */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    flex: 0 0 auto;       /* natural height; the workspace fills the rest of the viewport */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;   /* left controls vs. right actions */
+    flex-wrap: wrap;
+    padding: 5px 22px;   /* 5 + the 6px item top/bottom margins = 11px effective (spacing via margins, no flex gap) */
+    background: rgba(255,255,255,.72);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 1px solid rgba(0,0,0,.08);
+  }
+  /* two logical clusters: each wraps its OWN items, so when the toolbar wraps it stacks as
+     left-cluster then right-cluster (both left-aligned) instead of orphaning a single button. */
+  .tb-left, .tb-right {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  /* spacing via margins instead of flex `gap` (works in EVERY browser, incl. older Brave):
+     16px between items, 12px between wrapped rows; the 6px top/bottom also separates the two
+     clusters when the whole toolbar wraps. .topbar padding is reduced by 6px to compensate. */
+  .tb-left > *, .tb-right > * { margin: 6px 16px 6px 0; }
+  .tb-left > *:last-child, .tb-right > *:last-child { margin-right: 0; }
+  .brand {
+    font-weight: 600;
+    font-size: 16px;
+    letter-spacing: -.2px;
+    margin: 6px 16px 6px 0;     /* same as other tb-left items (resets <h1> default margins) */
+    white-space: nowrap;
+  }
+  .brand span { color: var(--accent); }
+
+  .switch-group {
+    display: inline-flex;
+    align-items: center;
+  }
+  .switch-group > * + * { margin-left: 6px; }   /* label → control spacing (no flex gap) */
+  .switch-group > .lbl {
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    margin-right: 2px;
+  }
+  .seg {
+    display: inline-flex;
+    background: var(--seg-track);
+    border: 0;
+    border-radius: 9px;
+    padding: 2px;
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    color: #4a4a4f;            /* AA contrast on the gray track */
+    padding: 5px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+  }
+  .seg button.active {                 /* selected = solid blue (fast to spot) */
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(0,113,227,.35);
+  }
+
+  .btn {
+    border: 1px solid rgba(0,0,0,.12);
+    background: #fff;
+    color: var(--ink);
+    padding: 7px 16px;
+    border-radius: 980px;        /* Apple pill */
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    transition: background .18s ease, border-color .18s ease, transform .08s ease;
+  }
+  .btn:hover { background: #f5f5f7; border-color: rgba(0,0,0,.2); }
+  .btn:active { transform: scale(.97); }
+  .btn.primary {
+    background: var(--accent);
+    border-color: transparent;
+    color: #fff;
+  }
+  .btn.primary:hover { background: #0063cc; }
+  .btn.ghost-danger { color: var(--danger); border-color: rgba(255,59,48,.35); }
+  .btn.ghost-danger:hover { background: rgba(255,59,48,.08); border-color: var(--danger); }
+
+  /* Visible keyboard focus for toolbar toggles & buttons (inputs already have a ring) */
+  .seg button:focus-visible,
+  .btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .seg button.active:focus-visible,
+  .btn.primary:focus-visible {
+    outline-color: #fff;
+    box-shadow: 0 0 0 4px var(--accent);
+  }
+  /* Fallback for engines without :focus-visible (older Brave/Chromium): show a ring on plain :focus
+     for the custom controls, then hide it for mouse on modern engines. The :not(:focus-visible) rule
+     is invalid (and thus ignored) on the old engine, so there the keyboard ring stays. */
+  .seg button:focus,
+  .btn:focus,
+  .preview-panel:focus,
+  .divider:focus,
+  .divider-toggle:focus,
+  .check-row input[type="checkbox"]:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .seg button:focus:not(:focus-visible),
+  .btn:focus:not(:focus-visible),
+  .preview-panel:focus:not(:focus-visible),
+  .divider:focus:not(:focus-visible),
+  .divider-toggle:focus:not(:focus-visible),
+  .check-row input[type="checkbox"]:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Thin, Apple-style scrollbars */
+  .form-panel::-webkit-scrollbar,
+  .preview-panel::-webkit-scrollbar { width: 10px; height: 10px; }
+  .form-panel::-webkit-scrollbar-thumb,
+  .preview-panel::-webkit-scrollbar-thumb {
+    background: rgba(0,0,0,.22);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .form-panel::-webkit-scrollbar-thumb:hover,
+  .preview-panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(0,0,0,.4);
+    background-clip: content-box;
+  }
+  .form-panel::-webkit-scrollbar-track,
+  .preview-panel::-webkit-scrollbar-track { background: transparent; }
+
+  /* ---------- Layout ---------- */
+  .workspace {
+    flex: 1 1 auto;
+    min-height: 0;        /* let the panels' own overflow handle scrolling, not the body */
+    display: grid;
+    grid-template-columns: var(--form-w, 460px) 10px 1fr;   /* form | resizable divider | preview */
+    gap: 0;
+    align-items: start;
+  }
+  .workspace.preview-collapsed {
+    grid-template-columns: 1fr 10px 0;                       /* PDF hidden → form fills; divider+toggle stay at the edge */
+  }
+
+  .form-panel {
+    height: 100%;
+    overflow-y: auto;
+    padding: 16px 16px 80px;
+    background: var(--bg);          /* gray canvas so the white group cards pop (iOS Settings) */
+  }
+
+  .preview-panel {
+    height: 100%;
+    overflow: auto;
+    padding: 0;
+    /* BLOCK (not flex) scroll container — a flex scroll container drops the child's
+       bottom padding from its scrollable height; block honors it. Horizontal centering
+       is done by #pages (align-items:center). */
+    display: block;
+    background: var(--bg);
+  }
+  .preview-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  /* Keep the form readable no matter how wide the panel gets (preview collapsed or dragged wide):
+     the content stays a centered, comfortably-sized column instead of stretching across the screen. */
+  .form-panel .group { max-width: 880px; margin-left: auto; margin-right: auto; }
+
+  /* ---------- Resizable divider (Overleaf-style: drag to resize, click to collapse) ---------- */
+  .divider {
+    position: relative;
+    height: 100%;
+    cursor: col-resize;
+    background: var(--bg);
+    touch-action: none;            /* allow pointer-drag without the page scrolling */
+    z-index: 6;
+  }
+  .divider::before {               /* the hairline; brightens on hover/drag */
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0; left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.18);    /* visible enough to read as a resize handle (not the faint --line) */
+    transition: background .15s, width .15s;
+  }
+  .divider:hover::before,
+  .divider.dragging::before { background: var(--accent); width: 2px; }
+  .divider:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  .workspace.preview-collapsed .divider { cursor: default; }
+
+  .divider-toggle {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px; height: 50px;
+    display: flex; align-items: center; justify-content: center;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: #fff;
+    color: var(--muted);
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,.16);
+    z-index: 7;
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .divider-toggle:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .divider-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .divider-chevron {
+    width: 6px; height: 6px;
+    border-top: 2px solid currentColor;
+    border-right: 2px solid currentColor;
+    margin-left: -2px;
+    transform: rotate(45deg);          /* › : expanded → click hides the PDF */
+    /* no transition: the collapse swaps the grid/toggle instantly, so the chevron must snap too
+       (a lone .2s rotation would visibly keep spinning after everything else has settled). */
+  }
+  .workspace.preview-collapsed .divider-chevron { transform: rotate(-135deg); margin-left: 2px; }  /* ‹ : collapsed → click shows the PDF */
+  /* when collapsed the divider sits at the very edge; pin the toggle inside so its right side isn't clipped */
+  .workspace.preview-collapsed .divider-toggle { left: auto; right: 4px; transform: translate(0, -50%); }   /* room for the focus ring vs the body edge */
+
+  /* keep the resize cursor + no text selection while dragging anywhere on the page */
+  body.col-resizing { cursor: col-resize; user-select: none; }
+  body.col-resizing .divider::before { background: var(--accent); width: 2px; }
+
+  /* ---------- Form ---------- */
+  .field { margin-bottom: 16px; }
+  .field > label,
+  .field > .field-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 5px;
+    color: var(--ink);
+  }
+  .field .hint {
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--muted);
+    margin: 0 0 6px;
+    text-align: justify;          /* "do bloku" — same as the assessment-cell text */
+    -webkit-hyphens: auto;
+    hyphens: auto;                /* avoid big gaps in the narrow column (uses <html lang>) */
+  }
+  .field input[type="text"],
+  .field input[type="date"],
+  .field select,
+  .field textarea {
+    width: 100%;
+    border: 1px solid rgba(0,0,0,.12);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--ink);
+    background: #fff;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .field input::placeholder,
+  .field textarea::placeholder { color: #767679; }   /* AA contrast on white */
+  .field input:focus,
+  .field select:focus,
+  .field textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .field textarea {
+    resize: none;          /* grows automatically to fit content (see autoGrow) */
+    min-height: 84px;
+    line-height: 1.45;
+    overflow: hidden;      /* no inner scrollbar; height is managed by JS */
+  }
+
+  .section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--muted);
+    font-weight: 600;
+    margin: 28px 0 12px;
+    padding: 0;
+  }
+  .section-title:first-child { margin-top: 6px; }
+
+  /* Collapsible groups (Apple iOS-Settings style cards) */
+  .group {
+    background: var(--panel);
+    border: 1px solid rgba(0,0,0,.06);
+    border-radius: 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  }
+  .group-header {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 13px 16px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--ink);
+    user-select: none;
+  }
+  .group-header::-webkit-details-marker { display: none; }
+  .group[open] .group-header { border-bottom: 1px solid rgba(0,0,0,.06); }
+  .group-header:hover { color: var(--accent); }
+  .group-header .chevron {
+    width: 8px;
+    height: 8px;
+    border-right: 2px solid var(--muted);
+    border-bottom: 2px solid var(--muted);
+    transform: rotate(-45deg);            /* closed → points right (›) */
+    transition: transform .2s ease;
+    flex: 0 0 auto;
+    margin-right: 2px;
+    margin-left: 10px;   /* min gap from a long title (no flex gap) */
+  }
+  .group[open] .group-header .chevron { transform: rotate(45deg); }  /* open → points down (⌄) */
+  .group-body { padding: 8px 16px 14px; }
+
+  /* symmetric 6px side-margins (offset by the container's -6px) give a 12px gutter that does NOT
+     indent the field when the row wraps to its own line — and needs no flex/grid gap (old-browser safe).
+     The .field's own margin-bottom:16px provides the vertical gap between stacked fields. */
+  .row-2 { display: flex; flex-wrap: wrap; margin-left: -6px; margin-right: -6px; }
+  .row-2 > * { flex: 1 1 130px; min-width: 130px; margin-left: 6px; margin-right: 6px; }   /* stacks when the column is too narrow for two (date input never clips) */
+
+  .check-row {
+    display: flex;
+    align-items: flex-start;   /* checkbox aligns with the FIRST line (label may wrap) */
+    padding: 11px 12px;
+    border: 1px solid rgba(0,0,0,.12);
+    border-radius: 10px;
+    background: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  /* the card frame is PASSIVE — no hover/focus highlight (unlike the text fields);
+     the only interactive element is the checkbox itself. */
+  /* Custom checkbox: rendered by us (identical in every browser/DPI — no native-control variance),
+     vertically centred on the first text line via the 1lh unit (font-metric-aware, no magic pixels). */
+  .check-row input[type="checkbox"] {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: 18px;
+    height: 18px;
+    margin: 0 16px 0 0;        /* right margin = the gap to the text (robust: no flex `gap` needed) */
+    margin-top: max(0px, calc((1lh - 18px) / 2));
+    border: 1.5px solid #7c7c83;   /* ≥3:1 on white (WCAG 1.4.11 non-text contrast) */
+    border-radius: 5px;
+    background: #fff;
+    cursor: pointer;
+    display: inline-grid;
+    place-content: center;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .check-row input[type="checkbox"]::before {
+    content: "";
+    width: 11px;
+    height: 11px;
+    background: #fff;
+    transform: scale(0);
+    transition: transform .12s ease;
+    clip-path: polygon(14% 44%, 0 65%, 43% 100%, 100% 16%, 80% 0%, 39% 67%);
+  }
+  .check-row input[type="checkbox"]:checked {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .check-row input[type="checkbox"]:checked::before { transform: scale(1); }
+  .check-row input[type="checkbox"]:hover { border-color: #8e8e93; }
+  .check-row input[type="checkbox"]:checked:hover { border-color: var(--accent); }   /* keep blue border when checked */
+  .check-row input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .save-status {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  /* visually-hidden but available to screen readers (used for the storage-failure alert) */
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ===========================================================
+     THE DOCUMENT (preview) — strict A4 / Times New Roman repro
+     =========================================================== */
+  #pages {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 28px;         /* equal space around the pages — incl. below the last page */
+    width: max-content;    /* shrink-wrap to the page so a narrow preview scrolls from the LEFT edge
+                              (align-items:center alone would center the overflowing page and clip its left) */
+    min-width: 100%;       /* …but always fill the panel so the page stays centered when there is room */
+    margin-left: auto;     /* (not margin-inline — older than flex gap, so it centers even on the user's Brave) */
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+  .page {
+    width: var(--page-w);
+    height: var(--page-h);          /* fixed A4 — one box per printed sheet */
+    background: #fff;
+    box-shadow: 0 4px 24px rgba(0,0,0,.16);
+    padding: var(--mar-top) var(--mar-right) var(--mar-bottom) var(--mar-left);
+    font-family: "Times New Roman", "Liberation Serif", Georgia, serif;
+    font-size: 12pt;
+    line-height: 1.18;
+    color: #000;
+    flex: 0 0 auto;
+    overflow: hidden;
+  }
+  .page + .page { margin-top: 24px; }   /* gutter between sheets on screen (no flex gap) */
+  .page-inner {                     /* the printable content box (A4 minus margins) */
+    height: 100%;
+    overflow: hidden;
+  }
+  .page .free-text,
+  .page .id-line,
+  .page .recommend,
+  table.assess .crit-body { overflow-wrap: anywhere; }   /* long unbroken values can't clip horizontally */
+  .page .doc-title {
+    text-align: center;
+    font-weight: 700;
+    font-size: 16pt;
+    margin: 0 0 14pt;
+  }
+  .page .id-line { margin: 0 0 6pt; }
+  .page .id-line.bold .lab { font-weight: 700; }
+  .page .hodnotenie-h {
+    font-weight: 400;
+    margin: 12pt 0 6pt;
+  }
+
+  table.assess {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 10pt;
+    table-layout: fixed;
+  }
+  table.assess td {
+    border: 0.5pt solid #000;
+    vertical-align: top;
+    padding: 4pt 5pt;
+    text-align: justify;   /* template: cell text is justified ("do bloku") */
+  }
+  table.assess td.mark { width: 8.7mm; }
+  table.assess .crit-head { font-weight: 400; }   /* template: regular upright 12pt (NOT bold) */
+  table.assess .crit-body {
+    white-space: pre-wrap;
+    margin-top: 2pt;
+    font-size: 10pt;                               /* template: 10pt italic */
+    font-style: italic;
+  }
+  table.assess .crit-cont { margin-top: 0; }       /* head-less continuation row: no 2pt heading gap */
+
+  .page .block-h {
+    font-weight: 400;
+    margin: 12pt 0 4pt;
+  }
+  .page .free-text {
+    white-space: pre-wrap;
+    min-height: 1.18em;
+    margin: 0 0 8pt;
+  }
+  .page .recommend {
+    font-weight: 400;
+    margin: 14pt 0 0;
+  }
+  .page .footer-sign {
+    margin-top: 30pt;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;   /* "Dňa:" sits level with the signature line */
+  }
+  .page .footer-sign .date { white-space: nowrap; }
+  .page .footer-sign .sign {
+    text-align: center;
+    width: 60mm;
+  }
+  .page .footer-sign .sign .dots { letter-spacing: 1px; }
+  .page .footer-sign .sign .cap { display: block; margin-top: 2pt; }
+
+  /* Empty-value placeholders: visible on screen, hidden on print */
+  .ph {
+    color: #b3001b;            /* solid red — 7.16:1 on white (WCAG AA); screen-only */
+    font-style: italic;
+  }
+
+  /* ---------- Pagination: avoid ugly splits if content ever exceeds 1 page ---------- */
+  body { orphans: 3; widows: 3; }
+  table.assess tr,
+  table.assess td,
+  .page .footer-sign { break-inside: avoid; page-break-inside: avoid; }
+  .page .doc-title,
+  .page .hodnotenie-h,
+  .page .block-h,
+  .page .recommend { break-after: avoid; page-break-after: avoid; }
+
+  /* ---------- Print ----------
+     Margins are baked into .page padding and @page margin is 0, so the printed box
+     equals the on-screen preview. In the print dialog choose Margins = "Žiadne / None"
+     and turn off "Hlavičky a päty / Headers and footers" (shown in the pre-print dialog). */
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  @media print {
+    /* defense-in-depth: a print must never be locked invisible by the boot guard (cannot
+       normally happen — init removes pf-booting synchronously before any print input). */
+    html.pf-booting .topbar, html.pf-booting .workspace { visibility: visible !important; }
+    html, body { background: #fff; }
+    /* undo the desktop app-shell so the printout flows across as many sheets as needed */
+    body { height: auto; display: block; overflow: visible; }
+    .topbar, .form-panel, .divider, .no-print { display: none !important; }
+    .workspace { display: block; }
+    .preview-panel {
+      height: auto;
+      overflow: visible;
+      padding: 0;
+      display: block;
+      background: #fff;
+    }
+    #pages { display: block; gap: 0; padding: 0; width: auto; min-width: 0; margin: 0; }
+    .page {
+      box-shadow: none;
+      height: auto;             /* content-driven; padding still gives the margins */
+      overflow: visible;
+      margin: 0;
+      break-after: page;        /* each page prints on its own sheet */
+      page-break-after: always;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page + .page { margin-top: 0; }   /* no screen gutter in the printed PDF */
+    .page-inner { height: auto; overflow: visible; }
+    .page:last-child { break-after: auto; page-break-after: auto; }
+    .ph { visibility: hidden !important; }   /* hide red placeholder but keep its space → print === preview */
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 1340px) {   /* stack before the A4 page + its margin + a scrollbar would force a 2nd scrollbar in the preview */
+    body { height: auto; display: block; overflow: visible; }   /* normal page scroll when stacked */
+    .workspace,
+    .workspace.preview-collapsed { grid-template-columns: 1fr; }   /* stacked → ignore split/collapse */
+    .form-panel { height: auto; border-bottom: 1px solid var(--line); }
+    .preview-panel { height: auto; }
+    .divider { display: none; }    /* no resizing when panels are stacked */
+  }
+  @media (max-width: 640px) {    /* phones: tighten the toolbar so nothing overflows */
+    .topbar { padding: 5px 14px; }   /* 5 + 5px item margin = 10px effective */
+    .tb-left > *, .tb-right > * { margin: 5px 12px 5px 0; }
+    .switch-group > * + * { margin-left: 5px; }
+  }
+
+  /* Respect the OS "reduce motion" setting: keep every end-state (checkmark, chevron, active
+     colors) but remove the animation. End-states are unchanged, so nothing breaks. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      transition-duration: .001ms !important;
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+  <header class="topbar no-print">
+    <div class="tb-left">
+      <h1 class="brand">Review<span>APP</span></h1>
+
+      <div class="switch-group">
+        <span class="lbl" id="lbl-level" data-i18n="thesisType">Typ práce</span>
+        <div class="seg" id="seg-level" role="radiogroup" aria-labelledby="lbl-level">
+          <button data-level="bakalarska" class="active" role="radio" aria-checked="true" tabindex="0" data-i18n="bachelor">Bakalárska</button>
+          <button data-level="diplomova" role="radio" aria-checked="false" tabindex="-1" data-i18n="master">Diplomová</button>
+        </div>
+      </div>
+
+      <div class="switch-group">
+        <span class="lbl" id="lbl-role" data-i18n="role">Rola</span>
+        <div class="seg" id="seg-role" role="radiogroup" aria-labelledby="lbl-role">
+          <button data-role="veduci" class="active" role="radio" aria-checked="true" tabindex="0" data-i18n="supervisor">Vedúci</button>
+          <button data-role="oponent" role="radio" aria-checked="false" tabindex="-1" data-i18n="opponent">Oponent</button>
+        </div>
+      </div>
+
+      <div class="switch-group">
+        <span class="lbl" id="lbl-doclang" data-i18n="docLanguage">Jazyk posudku</span>
+        <div class="seg" id="seg-doclang" role="radiogroup" aria-labelledby="lbl-doclang">
+          <button data-doclang="sk" class="active" role="radio" aria-checked="true" tabindex="0" data-i18n="langSk">Slovensky</button>
+          <button data-doclang="en" role="radio" aria-checked="false" tabindex="-1" data-i18n="langEn">Anglicky</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tb-right">
+      <span class="save-status" id="saveStatus">Ukladá sa automaticky</span>
+      <span id="saveAlert" class="sr-only" role="alert"></span>
+
+      <div class="switch-group">
+        <div class="seg" id="seg-uilang" role="radiogroup" data-i18n-aria="uiLangAria" aria-label="Jazyk rozhrania">
+          <button data-uilang="sk" class="active" role="radio" aria-checked="true" tabindex="0">SK</button>
+          <button data-uilang="en" role="radio" aria-checked="false" tabindex="-1">ENG</button>
+        </div>
+      </div>
+
+      <button class="btn ghost-danger" id="btnClear" data-i18n="clear" data-i18n-title="clearTitle" title="Vymazať všetky vyplnené údaje">Vymazať</button>
+      <button class="btn primary" id="btnPrint" data-i18n="savePdf" data-i18n-title="savePdfTitle" title="Otvorí dialóg tlače — zvoľte „Uložiť ako PDF“">Uložiť ako PDF</button>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <!-- ============ FORM ============ -->
+    <section class="form-panel no-print" aria-label="Formulár posudku" data-i18n-aria="formAria">
+
+      <details class="group" id="group-ident">
+        <summary class="group-header"><span data-i18n="identGroup">Identifikačné údaje</span><span class="chevron"></span></summary>
+        <div class="group-body">
+          <div class="section-title" role="heading" aria-level="2" data-i18n="metadata">Metadáta</div>
+          <div class="field">
+            <label for="f-pdfnazov" data-i18n="pdfName">Názov PDF súboru</label>
+            <input type="text" id="f-pdfnazov" maxlength="200" spellcheck="false" placeholder="Posudok" data-i18n-ph="pdfNamePh">
+          </div>
+
+          <div class="section-title" role="heading" aria-level="2" data-i18n="identification">Identifikácia</div>
+          <div class="field">
+            <label for="f-student" data-i18n="studentName">Meno študenta</label>
+            <input type="text" id="f-student" maxlength="500" spellcheck="false" placeholder="Tituly, meno a priezvisko" data-i18n-ph="studentPh">
+          </div>
+          <div class="field">
+            <label for="f-program" data-i18n="studyProgram">Študijný program</label>
+            <input type="text" id="f-program" maxlength="500" placeholder="napr. Aplikovaná informatika" data-i18n-ph="programPh">
+          </div>
+          <div class="field">
+            <label for="f-nazov" data-i18n="thesisTitle">Názov práce</label>
+            <input type="text" id="f-nazov" maxlength="600" placeholder="Názov záverečnej práce" data-i18n-ph="thesisTitlePh">
+          </div>
+          <div class="field">
+            <label for="f-hodnotitel" id="lbl-hodnotitel">Meno vedúceho</label>
+            <input type="text" id="f-hodnotitel" maxlength="500" spellcheck="false" placeholder="Tituly, meno a priezvisko" data-i18n-ph="evaluatorPh">
+          </div>
+        </div>
+      </details>
+
+      <details class="group" id="group-hodnotenie">
+        <summary class="group-header"><span data-i18n="evalGroup">Hodnotenie</span><span class="chevron"></span></summary>
+        <div class="group-body">
+          <div class="section-title" role="heading" aria-level="2" data-i18n="statements">Vyjadrenia</div>
+          <div id="criteria-container"><!-- criteria textareas injected here --></div>
+
+          <div class="section-title" id="title-extra" role="heading" aria-level="2" data-i18n="additionalStatements">Doplňujúce vyjadrenia</div>
+          <div class="field" id="ine-toggle-field" style="display:none">
+            <label class="check-row">
+              <input type="checkbox" id="f-ine-enabled">
+              <span data-i18n="includeOther">Zahrnúť „Iné skutočnosti“ (účasť na súťažiach, publikácie…)</span>
+            </label>
+          </div>
+          <div class="field" id="extra-field">
+            <label for="f-extra" id="lbl-extra">Pripomienky a otázky oponenta</label>
+            <textarea id="f-extra" maxlength="20000" placeholder="Vlastné slovné zhodnotenie." data-i18n-ph="critPh"></textarea>
+          </div>
+          <div class="field">
+            <label for="f-originalita" data-i18n="originalityLabel">Vyjadrenie ku výsledkom kontroly originality práce</label>
+            <textarea id="f-originalita" maxlength="20000" placeholder="Vlastné slovné zhodnotenie." data-i18n-ph="critPh"></textarea>
+          </div>
+
+          <div class="section-title" role="heading" aria-level="2" data-i18n="conclusion">Záver</div>
+          <div class="field">
+            <span class="field-label" id="lbl-odporucam" data-i18n="recommendation">Odporúčanie na obhajobu</span>
+            <div class="seg" id="seg-odporucam" role="radiogroup" aria-labelledby="lbl-odporucam" style="width:100%">
+              <button data-odp="1" class="active" role="radio" aria-checked="true" tabindex="0" style="flex:1" data-i18n="recommend">Odporúčam</button>
+              <button data-odp="0" role="radio" aria-checked="false" tabindex="-1" style="flex:1" data-i18n="notRecommend">Neodporúčam</button>
+            </div>
+          </div>
+          <div class="row-2">
+            <div class="field">
+              <label for="f-znamka" data-i18n="proposedGrade">Navrhovaná známka</label>
+              <select id="f-znamka">
+                <option>A</option><option>B</option><option>C</option>
+                <option>D</option><option>E</option><option>FX</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="f-datum" data-i18n="date">Dňa</label>
+              <input type="date" id="f-datum">
+            </div>
+          </div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============ RESIZABLE DIVIDER ============ -->
+    <div class="divider" id="divider" role="separator" aria-orientation="vertical" tabindex="0"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="50"
+         aria-label="Veľkosť formulára a náhľadu" data-i18n-aria="dividerAria">
+      <button class="divider-toggle" id="dividerToggle" type="button" title="Skryť PDF" aria-label="Skryť PDF" aria-expanded="true" aria-controls="preview-panel">
+        <span class="divider-chevron" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <!-- ============ PREVIEW ============ -->
+    <section class="preview-panel" id="preview-panel" tabindex="0" aria-label="Náhľad dokumentu" data-i18n-aria="previewAria">
+      <div id="pages"><!-- paginated A4 pages injected here --></div>
+    </section>
+  </div>
+
+<script>
+"use strict";
+(function () {
+  /* ---------------- Configuration ---------------- */
+
+  const LANGS  = ["sk", "en"];
+  const ROLES  = ["veduci", "oponent"];
+  const LEVELS = ["bakalarska", "diplomova"];
+
+  // Level wording, per language. SK declines the noun; EN just needs the thesis phrase.
+  const LEVEL_WORDS = {
+    sk: {
+      bakalarska: { gen: "bakalárskej", acc: "Bakalársku", titleNoun: "bakalárskej" },
+      diplomova:  { gen: "diplomovej",  acc: "Diplomovú",  titleNoun: "diplomovej" }
+    },
+    en: {
+      bakalarska: { gen: "bachelor's", thesis: "bachelor's thesis" },
+      diplomova:  { gen: "master's",   thesis: "master's thesis" }
+    }
+  };
+
+  // Criteria per language → per role. {help} uses {gen} placeholder for level-dependent wording.
+  const CRITERIA = {
+    sk: {
+      veduci: [
+        {
+          head: "Zhodnotenie úrovne predloženej práce.",
+          help: "Formálna a odborná úroveň práce. Dosiahnuté výsledky a ich popis v dokumente. " +
+                "Vedúci sa v tomto bode explicitne vyjadrí, či bolo splnené zadanie projektu " +
+                "(ak nie, musí zdôvodniť pridelenie známky lepšej ako FX)."
+        },
+        {
+          head: "Zhodnotenie aktivity študenta.",
+          help: "Konzultácie, práca podľa pokynov vedúceho, dodržiavanie termínov, kreativita " +
+                "študenta, aktívny prístup študenta, dostatočne včas predložená práca vedúcemu."
+        }
+      ],
+      oponent: [
+        {
+          head: "Postup a dokumentácia riešenia.",
+          help: "Či študent dostatočne presne, prehľadne a úplne popísal, čo v práci urobil. " +
+                "Zhodnotiť metodiku a postup riešenia pri vedeckých prácach. Očakáva sa vyjadrenie " +
+                "k častiam (aplikovať podľa práce): Špecifikácia: je vlastná (softvérová) analýza " +
+                "presná, vecná a dostatočne pokrývajúca riešený problém? Návrh riešenia: softvérový " +
+                "návrh, metodika experimentov, efektívnosť metód. Implementácia: kvalita predloženého " +
+                "zdrojového kódu, dokumentácia a prehľadnosť kódu, technická a používateľská " +
+                "dokumentácia. Overenie riešenia: výsledky (softvérových) testov, ošetrenie chýb, " +
+                "súlad experimentálnych výsledkov s teóriou."
+        },
+        {
+          head: "Odborná úroveň.",
+          help: "Využitie poznatkov z AI, resp. príslušnej domény. Analýza existujúceho stavu " +
+                "problematiky riešenej v {gen} práci. Schopnosť formulovať odborný text."
+        },
+        {
+          head: "Formálna úroveň.",
+          help: "Gramatické chyby, štruktúra práce, čitateľnosť textu, využitie literatúry " +
+                "a korektné uvádzanie a citovanie zdrojov, prílohy, technická a programová dokumentácia…"
+        },
+        {
+          head: "Celkové zhodnotenie.",
+          help: "Dosiahnuté výsledky, prínos riešenia, ich pôvodnosť, význam a využitie výsledkov " +
+                "{gen} práce, použiteľnosť výslednej aplikácie."
+        }
+      ]
+    },
+    en: {
+      veduci: [
+        {
+          head: "Assessment of the level of the submitted thesis.",
+          help: "The formal and professional level of the thesis. The results achieved and their " +
+                "description in the document. Here the supervisor explicitly states whether the " +
+                "assignment was fulfilled (if not, a grade better than FX must be justified)."
+        },
+        {
+          head: "Assessment of the student's activity.",
+          help: "Consultations, working according to the supervisor's instructions, meeting " +
+                "deadlines, the student's creativity, an active approach, and submitting the " +
+                "thesis to the supervisor sufficiently early."
+        }
+      ],
+      oponent: [
+        {
+          head: "The approach to and documentation of the solution.",
+          help: "Whether the student described what they did in the thesis sufficiently precisely, " +
+                "clearly and completely. Assess the methodology and the approach to the solution " +
+                "for research-oriented theses. A statement is expected on the following parts " +
+                "(apply as relevant to the thesis): Specification: is the (software) analysis " +
+                "precise, factual and does it sufficiently cover the problem addressed? Proposed " +
+                "solution: software design, the methodology of experiments, the efficiency of the " +
+                "methods. Implementation: the quality of the submitted source code, code " +
+                "documentation and readability, technical and user documentation. Verification of " +
+                "the solution: the results of (software) tests, error handling, and the agreement " +
+                "of experimental results with theory."
+        },
+        {
+          head: "Professional level.",
+          help: "The use of knowledge from AI or the relevant domain. An analysis of the current " +
+                "state of the problem addressed in the {gen} thesis. The ability to formulate " +
+                "professional text."
+        },
+        {
+          head: "Formal level.",
+          help: "Grammatical errors, the structure of the thesis, readability of the text, the use " +
+                "of literature and the correct attribution and citation of sources, appendices, " +
+                "technical and software documentation…"
+        },
+        {
+          head: "Overall assessment.",
+          help: "The results achieved, the contribution of the solution, their originality, the " +
+                "significance and use of the results of the {gen} thesis, and the usability of the " +
+                "resulting application."
+        }
+      ]
+    }
+  };
+
+  // Heading text shown in the DOCUMENT for the extra section, per language.
+  const EXTRA = {
+    sk: { veduci: "Iné skutočnosti", oponent: "Pripomienky a otázky oponenta" },
+    en: { veduci: "Other facts",     oponent: "Opponent's comments and questions" }
+  };
+
+  // Convenience prefill for "študijný program" — resolved in the DOCUMENT language while the
+  // field is untouched, so an English posudok never shows the Slovak default (and vice-versa).
+  const PROGRAM_DEFAULTS = { sk: "Aplikovaná informatika", en: "Applied Informatics" };
+
+  // UI (form/toolbar) strings, per language. Document strings are built in buildBlocks().
+  const T = {
+    sk: {
+      docLanguage: "Jazyk posudku", langSk: "Slovensky", langEn: "Anglicky",
+      uiLangAria: "Jazyk rozhrania",
+      thesisType: "Typ práce", bachelor: "Bakalárska", master: "Diplomová",
+      role: "Rola", supervisor: "Vedúci", opponent: "Oponent",
+      savingAuto: "Ukladá sa automaticky", saved: "Uložené ✓",
+      storageWarn: "⚠ Ukladanie nefunguje — exportujte do PDF",
+      clear: "Vymazať", clearTitle: "Vymazať všetky vyplnené údaje",
+      savePdf: "Uložiť ako PDF", savePdfTitle: "Otvorí dialóg tlače — zvoľte „Uložiť ako PDF“",
+      formAria: "Formulár posudku", previewAria: "Náhľad dokumentu",
+      dividerAria: "Veľkosť formulára a náhľadu", hidePdf: "Skryť PDF", showPdf: "Zobraziť PDF",
+      identGroup: "Identifikačné údaje", metadata: "Metadáta",
+      pdfName: "Názov PDF súboru", pdfNamePh: "Posudok",
+      identification: "Identifikácia",
+      studentName: "Meno študenta", studentPh: "Tituly, meno a priezvisko",
+      studyProgram: "Študijný program", programPh: "napr. Aplikovaná informatika",
+      thesisTitle: "Názov práce", thesisTitlePh: "Názov záverečnej práce",
+      evaluatorPh: "Tituly, meno a priezvisko",
+      supervisorName: "Meno vedúceho", opponentName: "Meno oponenta",
+      evalGroup: "Hodnotenie", critPh: "Vlastné slovné zhodnotenie.",
+      statements: "Vyjadrenia",
+      additionalStatements: "Doplňujúce vyjadrenia",
+      includeOther: "Zahrnúť „Iné skutočnosti“ (účasť na súťažiach, publikácie…)",
+      otherFacts: "Iné skutočnosti", opponentComments: "Pripomienky a otázky oponenta",
+      originalityLabel: "Vyjadrenie ku výsledkom kontroly originality práce",
+      conclusion: "Záver", recommendation: "Odporúčanie na obhajobu",
+      recommend: "Odporúčam", notRecommend: "Neodporúčam",
+      proposedGrade: "Navrhovaná známka", date: "Dňa",
+      printAlert: "V dialógu tlače nastavte:\n\n" +
+        "•  Cieľ / Destination:  Uložiť ako PDF\n" +
+        "•  Okraje / Margins:  Žiadne (None)\n" +
+        "•  Hlavičky a päty / Headers and footers:  vypnúť\n\n" +
+        "Tým získate presný 1:1 výstup na strane A4.",
+      clearConfirm: "Naozaj vymazať všetky vyplnené údaje? Túto akciu nie je možné vrátiť späť.",
+      pdfFallback: "Posudok"
+    },
+    en: {
+      docLanguage: "Review language", langSk: "Slovak", langEn: "English",
+      uiLangAria: "Interface language",
+      thesisType: "Thesis type", bachelor: "Bachelor's", master: "Master's",
+      role: "Role", supervisor: "Supervisor", opponent: "Opponent",
+      savingAuto: "Saving automatically", saved: "Saved ✓",
+      storageWarn: "⚠ Saving unavailable — export to PDF",
+      clear: "Clear", clearTitle: "Clear all entered data",
+      savePdf: "Save as PDF", savePdfTitle: "Opens the print dialog — choose “Save as PDF”",
+      formAria: "Review form", previewAria: "Document preview",
+      dividerAria: "Form / preview size", hidePdf: "Hide PDF", showPdf: "Show PDF",
+      identGroup: "Identification", metadata: "Metadata",
+      pdfName: "PDF file name", pdfNamePh: "Review",
+      identification: "Identification",
+      studentName: "Student's name", studentPh: "Titles, first and last name",
+      studyProgram: "Study programme", programPh: "e.g. Applied Informatics",
+      thesisTitle: "Thesis title", thesisTitlePh: "Title of the thesis",
+      evaluatorPh: "Titles, first and last name",
+      supervisorName: "Supervisor's name", opponentName: "Opponent's name",
+      evalGroup: "Evaluation", critPh: "Your written assessment.",
+      statements: "Statements",
+      additionalStatements: "Additional statements",
+      includeOther: "Include “Other facts” (competitions, publications…)",
+      otherFacts: "Other facts", opponentComments: "Opponent's comments and questions",
+      originalityLabel: "Statement on the results of the thesis originality check",
+      conclusion: "Conclusion", recommendation: "Recommendation for defence",
+      recommend: "Recommend", notRecommend: "Do not recommend",
+      proposedGrade: "Proposed grade", date: "Date",
+      printAlert: "In the print dialog set:\n\n" +
+        "•  Destination:  Save as PDF\n" +
+        "•  Margins:  None\n" +
+        "•  Headers and footers:  off\n\n" +
+        "This gives you an exact 1:1 A4 output.",
+      clearConfirm: "Really clear all entered data? This action cannot be undone.",
+      pdfFallback: "Review"
+    }
+  };
+
+  const STORAGE_KEY = "posudok-factory:v1";
+
+  /* ---------------- State ---------------- */
+
+  const defaultData = () => ({
+    docLang: "sk",   // language of the generated posudok (document)
+    uiLang: "sk",    // language of the app interface (chrome)
+    level: "bakalarska",
+    role: "veduci",
+    menoStudenta: "",
+    studijnyProgram: "",       // empty = use PROGRAM_DEFAULTS in the document language (see effectiveProgram)
+    programTouched: false,     // becomes true once the user edits the study programme
+    nazovPrace: "",
+    menoHodnotitela: "",
+    // criteria text stored separately per role so switching keeps both
+    criteria: { veduci: ["", ""], oponent: ["", "", "", ""] },
+    // extra section text stored per role
+    extra: { veduci: "", oponent: "" },
+    // veduci's "Iné skutočnosti" is optional (off by default)
+    ineEnabled: false,
+    originalita: "",
+    odporucam: true,
+    znamka: "A",
+    datum: todayISO(),
+    datumTouched: false,  // becomes true once the user picks a date manually
+    pdfNazov: "",         // empty = auto "Posudok <role> <student>" (see effectivePdfName)
+    pdfNazovTouched: false,
+    // split-layout prefs (side-by-side desktop view)
+    formW: 460,            // form-panel width in px (clamped to the window at apply time)
+    previewCollapsed: false
+  });
+
+  let data = load();
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultData();
+      const parsed = JSON.parse(raw) || {};
+      const d = defaultData();
+      Object.assign(d, parsed);
+
+      // --- normalize nested shapes so corrupt/old localStorage can never crash a renderer ---
+      const defC = defaultData().criteria;
+      const srcC = (parsed.criteria && typeof parsed.criteria === "object") ? parsed.criteria : {};
+      d.criteria = {};
+      Object.keys(defC).forEach(role => {
+        const arr = Array.isArray(srcC[role]) ? srcC[role] : [];
+        d.criteria[role] = defC[role].map((_, i) => typeof arr[i] === "string" ? arr[i] : "");
+      });
+      const srcE = (parsed.extra && typeof parsed.extra === "object") ? parsed.extra : {};
+      d.extra = {
+        veduci:  typeof srcE.veduci === "string"  ? srcE.veduci  : "",
+        oponent: typeof srcE.oponent === "string" ? srcE.oponent : ""
+      };
+
+      // coerce scalar string fields, then clamp EVERY persisted string to its form maxlength —
+      // corrupt/hand-edited localStorage could otherwise load oversized text that bypasses the inputs
+      // and stresses pagination/title handling.
+      const MAXLEN = { menoStudenta: 500, studijnyProgram: 500, nazovPrace: 600, menoHodnotitela: 500, originalita: 20000 };
+      Object.keys(MAXLEN).forEach(k => {
+        if (typeof d[k] !== "string") d[k] = "";
+        else if (d[k].length > MAXLEN[k]) d[k] = d[k].slice(0, MAXLEN[k]);
+      });
+      Object.keys(d.criteria).forEach(role => {
+        d.criteria[role] = d.criteria[role].map(s => s.length > 20000 ? s.slice(0, 20000) : s);
+      });
+      d.extra.veduci = d.extra.veduci.slice(0, 20000);
+      d.extra.oponent = d.extra.oponent.slice(0, 20000);
+      if (typeof d.pdfNazov === "string" && d.pdfNazov.length > 200) d.pdfNazov = d.pdfNazov.slice(0, 200);
+      // study programme: untouched → resolves to the document-language default (effectiveProgram).
+      // Migrate older saves (no flag): any non-empty stored value counts as the user's own → keep it.
+      d.programTouched = (parsed.programTouched === undefined)
+        ? d.studijnyProgram.trim() !== ""
+        : !!parsed.programTouched;
+      if (!d.programTouched) d.studijnyProgram = "";
+      // language: separate document vs UI language; migrate the brief earlier single `lang` field
+      const legacyLang = LANGS.indexOf(parsed.lang) !== -1 ? parsed.lang : "sk";
+      d.docLang = LANGS.indexOf(parsed.docLang) !== -1 ? parsed.docLang : legacyLang;
+      d.uiLang  = LANGS.indexOf(parsed.uiLang)  !== -1 ? parsed.uiLang  : "sk";
+      delete d.lang;
+      if (LEVELS.indexOf(d.level) === -1) d.level = "bakalarska";
+      if (ROLES.indexOf(d.role) === -1) d.role = "veduci";
+      if (["A", "B", "C", "D", "E", "FX"].indexOf(d.znamka) === -1) d.znamka = "A";
+      // PDF name: untouched → auto "Posudok <role> <student>" (effectivePdfName). Migrate older saves:
+      // a stored custom value counts as touched, but the old default "Posudok" reverts to the new auto name.
+      if (typeof d.pdfNazov !== "string") d.pdfNazov = "";
+      d.pdfNazovTouched = (parsed.pdfNazovTouched === undefined)
+        ? (d.pdfNazov.trim() !== "" && d.pdfNazov !== "Posudok" && d.pdfNazov !== "Review")
+        : !!parsed.pdfNazovTouched;
+      if (!d.pdfNazovTouched) d.pdfNazov = "";
+      if (typeof d.formW !== "number" || !isFinite(d.formW) || d.formW <= 0) d.formW = 460;  // clamped to window on apply
+      d.previewCollapsed = (parsed.previewCollapsed === undefined) ? false : !!parsed.previewCollapsed;
+      d.odporucam = (parsed.odporucam === undefined) ? true : !!parsed.odporucam;  // default true; falsy → neodporúčam
+
+      // migration: old data with veduci "Iné skutočnosti" text but no ineEnabled flag → keep it shown
+      d.ineEnabled = (parsed.ineEnabled === undefined)
+        ? (d.extra.veduci.trim() !== "")
+        : !!parsed.ineEnabled;
+
+      // date: keep a user-CHOSEN date (real calendar date, or intentionally cleared to blank);
+      // an UNtouched auto-date is re-stamped to the current PC day on every load so a saved draft
+      // never prints a stale date; corrupt / out-of-range / absent values fall back to today.
+      const rawDatum = typeof parsed.datum === "string" ? parsed.datum : "";
+      const validRaw = isCalendarISO(rawDatum);
+      if (validRaw && (parsed.datumTouched === undefined || parsed.datumTouched === true)) {
+        d.datum = rawDatum;        // explicitly chosen, or legacy data predating the touched flag
+        d.datumTouched = true;
+      } else if (parsed.datumTouched === true && rawDatum === "") {
+        d.datum = "";              // user explicitly cleared the date
+        d.datumTouched = true;
+      } else {
+        d.datum = todayISO();      // untouched auto-date / corrupt / absent → current PC day
+        d.datumTouched = false;
+      }
+      return d;
+    } catch (e) {
+      try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}   // drop unparseable data
+      return defaultData();
+    }
+  }
+
+  // probe whether localStorage actually works (private mode / full / blocked)
+  let storageOK = true;
+  try {
+    localStorage.setItem("__pf_test__", "1");
+    localStorage.removeItem("__pf_test__");
+  } catch (e) { storageOK = false; }
+
+  let saveTimer = null;
+  function save() {
+    // #saveStatus is a VISIBLE-only indicator (deliberately NOT a live region) so the transient
+    // "Saved"/"Saving" churn on every keystroke is not announced over the user's typing. The rare,
+    // important storage-failure warning is routed to #saveAlert (role=alert) so it is still spoken.
+    const s = document.getElementById("saveStatus");
+    const a = document.getElementById("saveAlert");
+    if (!storageOK) { clearTimeout(saveTimer); s.textContent = tStr("storageWarn"); a.textContent = tStr("storageWarn"); return; }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      if (a.textContent) a.textContent = "";   // recovered: clear a prior warning (only when set → no churn)
+      s.textContent = tStr("saved");
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => { s.textContent = tStr("savingAuto"); }, 1200);  // reads current lang at fire time
+    } catch (e) {
+      storageOK = false;
+      clearTimeout(saveTimer);   // don't let a pending idle message overwrite the warning
+      s.textContent = tStr("storageWarn");
+      a.textContent = tStr("storageWarn");
+    }
+  }
+
+  /* ---------------- Helpers ---------------- */
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+
+  // current UI-chrome string for the active interface language
+  function tStr(k) { return T[data.uiLang][k]; }
+
+  function esc(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // criteria hints are form guidance → UI language
+  function fillHelp(text) {
+    return text.replace(/\{gen\}/g, LEVEL_WORDS[data.uiLang][data.level].gen);
+  }
+
+  // the study programme that actually prints: the user's value once touched, otherwise the
+  // institute default in the DOCUMENT language (so it's never a Slovak default in an English doc)
+  function effectiveProgram() {
+    return data.programTouched ? data.studijnyProgram : PROGRAM_DEFAULTS[data.docLang];
+  }
+
+  // PDF file name: the user's value once edited, otherwise an auto default in the DOCUMENT language:
+  // "Posudok Vedúci/Oponent <meno študenta>"  (EN: "Review Supervisor/Opponent <name>").
+  function effectivePdfName() {
+    if (data.pdfNazovTouched) return data.pdfNazov;
+    const dl = data.docLang;
+    const role = data.role === "veduci" ? T[dl].supervisor : T[dl].opponent;
+    // clamp to the field's own maxlength so a pathologically long student name can't push the
+    // auto value past 200 chars (which the field would later chop abruptly on the first keystroke).
+    return (T[dl].pdfFallback + " " + role + " " + (data.menoStudenta || "")).replace(/\s+/g, " ").trim().slice(0, 200);
+  }
+
+  // date is part of the DOCUMENT. Numeric DD.MM.YYYY (zero-padded, no spaces) in BOTH languages.
+  function formatDate(iso) {
+    if (!iso) return "";
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+    if (!m) return iso;
+    return m[3] + "." + m[2] + "." + m[1];   // e.g. 21.06.2026
+  }
+
+  const APP_TITLE = "ReviewAPP";   // browser-tab title during normal use
+
+  // sanitized PDF file name / Title metadata — applied ONLY at print time (so the exported PDF
+  // stays neutral and never reveals the app); falls back to the doc-language default ("Posudok"/"Review").
+  function pdfFileName() {
+    const safe = (effectivePdfName() || "")
+      .replace(/[\\/:*?"<>|]+/g, " ")   // strip Windows-reserved filename characters
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/^[.\s]+|[.\s]+$/g, "")  // strip leading/trailing dots (and surrounding spaces)
+      .trim();
+    return safe || T[data.docLang].pdfFallback;
+  }
+
+  // Keep an UNtouched auto-date current even on a tab left open across midnight: load() only
+  // re-stamps at page load, so without this a long-open tab would print/save yesterday's date.
+  function restampAutoDate() {
+    if (data.datumTouched) return;
+    const t = todayISO();
+    if (t === data.datum) return;
+    data.datum = t; syncFormFields(); renderPage(); save();
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) restampAutoDate(); });
+
+  // The tab shows "ReviewAPP"; only while printing does document.title become the neutral PDF
+  // name (the browser uses it as the Save-as-PDF filename + Title metadata), then it's restored.
+  window.addEventListener("beforeprint", () => { restampAutoDate(); document.title = pdfFileName(); });
+  window.addEventListener("afterprint", () => { document.title = APP_TITLE; });
+
+  // Cross-tab safety: if ANOTHER tab saves a newer draft, an IDLE tab here adopts it (prevents the
+  // stale second tab from later clobbering those edits). A tab whose field is focused is actively
+  // being edited, so we leave the user's in-progress work untouched (their next save wins).
+  window.addEventListener("storage", (e) => {
+    if (e.key !== STORAGE_KEY || e.newValue === null) return;   // ignore other keys / a clear() in another tab
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT")) return;
+    data = load();
+    applyLang(); renderCriteriaForm(); syncFormFields(); renderPage(); applyLayout();   // re-apply (no save → no echo)
+  });
+
+  // grow a textarea to fit its content (no inner scrollbar). offsetHeight-clientHeight
+  // accounts for the borders under box-sizing:border-box. No-op while hidden (scrollHeight 0).
+  function autoGrow(el) {
+    if (!el || el.tagName !== "TEXTAREA") return;
+    el.style.height = "auto";
+    el.style.height = (el.scrollHeight + (el.offsetHeight - el.clientHeight) + 1) + "px";  // +1 avoids sub-pixel clip
+  }
+
+  // reflect a segmented (radio) control's selection: .active, aria-checked, and roving tabindex
+  function setSeg(sel, isOn) {
+    document.querySelectorAll(sel + " button").forEach(b => {
+      const on = isOn(b);
+      b.classList.toggle("active", on);
+      b.setAttribute("aria-checked", String(on));
+      b.setAttribute("tabindex", on ? "0" : "-1");
+    });
+  }
+
+  // apply all STATIC UI strings for the active language (data-i18n = textContent,
+  // data-i18n-ph = placeholder, data-i18n-title = title, data-i18n-aria = aria-label).
+  // State-dependent strings (evaluator/extra labels, save status, criteria, the document)
+  // are localized by their own render functions, not here.
+  function applyLang() {
+    const t = T[data.uiLang];
+    document.documentElement.lang = data.uiLang;
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const v = t[el.getAttribute("data-i18n")];
+      if (v != null) el.textContent = v;
+    });
+    document.querySelectorAll("[data-i18n-ph]").forEach(el => {
+      const v = t[el.getAttribute("data-i18n-ph")];
+      if (v != null) el.setAttribute("placeholder", v);
+    });
+    document.querySelectorAll("[data-i18n-title]").forEach(el => {
+      const v = t[el.getAttribute("data-i18n-title")];
+      if (v != null) el.setAttribute("title", v);
+    });
+    document.querySelectorAll("[data-i18n-aria]").forEach(el => {
+      const v = t[el.getAttribute("data-i18n-aria")];
+      if (v != null) el.setAttribute("aria-label", v);
+    });
+    setSeg("#seg-doclang", b => b.dataset.doclang === data.docLang);
+    setSeg("#seg-uilang", b => b.dataset.uilang === data.uiLang);
+  }
+
+  // current PC date as YYYY-MM-DD (local time, so it matches the user's calendar day)
+  function todayISO() {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + mm + "-" + dd;
+  }
+
+  // true only for a REAL calendar date in YYYY-MM-DD (rejects 2026-13-40 etc.), local time
+  function isCalendarISO(s) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (!m) return false;
+    const dt = new Date(+m[1], +m[2] - 1, +m[3]);
+    return dt.getFullYear() === +m[1] && dt.getMonth() === +m[2] - 1 && dt.getDate() === +m[3];
+  }
+
+  /* ---------------- Rendering: form ---------------- */
+
+  function renderCriteriaForm() {
+    const box = $("#criteria-container");
+    const list = CRITERIA[data.uiLang][data.role];
+    const ph = esc(tStr("critPh"));
+    box.innerHTML = list.map((c, i) => `
+      <div class="field">
+        <label for="f-crit-${i}">${esc(c.head)}</label>
+        <p class="hint" id="hint-crit-${i}">${esc(fillHelp(c.help))}</p>
+        <textarea id="f-crit-${i}" maxlength="20000" aria-describedby="hint-crit-${i}"
+          placeholder="${ph}"></textarea>
+      </div>
+    `).join("");
+
+    list.forEach((c, i) => {
+      const ta = $("#f-crit-" + i, box);
+      ta.value = data.criteria[data.role][i] || "";
+      autoGrow(ta);
+      ta.addEventListener("input", () => {
+        data.criteria[data.role][i] = ta.value;
+        autoGrow(ta);
+        renderPage(); save();
+      });
+    });
+  }
+
+  function syncFormFields() {
+    // mirror state into the form controls (explicit per-field; wiring is in bindSimpleInputs)
+    $("#f-pdfnazov").value = effectivePdfName();
+    $("#f-student").value = data.menoStudenta;
+    $("#f-program").value = effectiveProgram();
+    $("#f-nazov").value = data.nazovPrace;
+    $("#f-hodnotitel").value = data.menoHodnotitela;
+    $("#f-originalita").value = data.originalita;
+    autoGrow($("#f-originalita"));
+    $("#f-znamka").value = data.znamka;
+    $("#f-datum").value = data.datum;
+
+    // role-dependent labels (language-aware)
+    $("#lbl-hodnotitel").textContent = tStr(data.role === "oponent" ? "opponentName" : "supervisorName");
+
+    // extra field: oponent = always shown; veduci = optional, gated by a checkbox
+    $("#lbl-extra").textContent = tStr(data.role === "veduci" ? "otherFacts" : "opponentComments");
+    $("#f-extra").value = data.extra[data.role] || "";
+    const isVed = data.role === "veduci";
+    $("#ine-toggle-field").style.display = isVed ? "" : "none";
+    $("#f-ine-enabled").checked = !!data.ineEnabled;
+    $("#extra-field").style.display = (!isVed || data.ineEnabled) ? "" : "none";
+    autoGrow($("#f-extra"));
+
+    // segmented radio controls: selection + roving tabindex
+    setSeg("#seg-odporucam", b => (b.dataset.odp === "1") === data.odporucam);
+    setSeg("#seg-level", b => b.dataset.level === data.level);
+    setSeg("#seg-role", b => b.dataset.role === data.role);
+
+    // Browser spellcheck of the document-content fields follows the DOCUMENT language (the user
+    // writes the posudok in docLang), independent of the UI language on <html lang>. Names/metadata
+    // get spellcheck off (in the static HTML) — proper names aren't dictionary words in any language.
+    const dl = data.docLang;
+    ["#f-nazov", "#f-program", "#f-extra", "#f-originalita"].forEach(s => $(s).setAttribute("lang", dl));
+    document.querySelectorAll("#criteria-container textarea").forEach(t => t.setAttribute("lang", dl));
+  }
+
+  /* ---------------- Rendering: document preview ---------------- */
+
+  function val(text, placeholder) {
+    if (text && String(text).trim() !== "") return esc(text);
+    return `<span class="ph">${esc(placeholder || "")}</span>`;
+  }
+
+  // Build the document as an ordered list of flow blocks:
+  //   {t:"html", html, kind?}  – an atomic element (id-line, heading, recommendation, footer)
+  //   {t:"row",  html}         – one assessment-table row (kept intact, may move to next page)
+  //   {t:"text", text}         – a free-text paragraph (may be split word-by-word across pages)
+  function buildBlocks() {
+    const lang = data.docLang;   // the DOCUMENT language (independent of the UI language)
+    const en = lang === "en";
+    const L = LEVEL_WORDS[lang][data.level];
+    const blocks = [];
+    const push = (html, kind) => blocks.push({ t: "html", html: html, kind: kind || null });
+
+    // localized document strings (HTML-bearing fields kept raw; plain text gets esc()'d)
+    let S;
+    if (en) {
+      const role = data.role === "oponent" ? "opponent" : "supervisor";
+      const Role = role.charAt(0).toUpperCase() + role.slice(1);
+      S = {
+        title: `${Role}'s review of the ${L.thesis}`,
+        student: "Student's name:",
+        program: "Study programme:",
+        nazov: `Title of the ${L.thesis}:`,
+        evaluator: `${Role}'s name:`,
+        hodnotenie: `<strong>Evaluation</strong> of the ${L.thesis}:`,
+        originality: "Statement on the results of the thesis originality check:",
+        recommend: `I <strong>${data.odporucam ? "recommend" : "do not recommend"}</strong> the ${L.thesis} for defence, with a proposed grade of <strong>${esc(data.znamka)}</strong>.`,
+        date: "Date:",
+        sign: `${role}'s signature`,
+        critPh: "(written assessment)"
+      };
+    } else {
+      const roleTitle = data.role === "oponent" ? "oponenta" : "vedúceho";
+      S = {
+        title: `Posudok ${roleTitle} ${L.titleNoun} práce`,
+        student: "Meno študenta:",
+        program: "Študijný program:",
+        nazov: `Názov ${L.gen} práce:`,
+        evaluator: `Meno ${roleTitle}:`,
+        hodnotenie: `<strong>Hodnotenie</strong> ${L.gen} práce:`,
+        originality: "Vyjadrenie ku výsledkom kontroly originality práce:",
+        recommend: `${L.acc} prácu <strong>${data.odporucam ? "odporúčam" : "neodporúčam"}</strong> na obhajobu, s navrhovanou známkou <strong>${esc(data.znamka)}</strong>.`,
+        date: "Dňa:",
+        sign: `podpis ${roleTitle}`,
+        critPh: "(slovné zhodnotenie)"
+      };
+    }
+
+    push(`<div class="doc-title">${esc(S.title)}</div>`);
+    push(`<div class="id-line">${esc(S.student)} ${val(data.menoStudenta, "—")}</div>`);
+    push(`<div class="id-line">${esc(S.program)} <em>${val(effectiveProgram(), "—")}</em></div>`);
+    push(`<div class="id-line bold"><span class="lab">${esc(S.nazov)}</span> ${val(data.nazovPrace, "—")}</div>`);
+    push(`<div class="id-line">${esc(S.evaluator)} ${val(data.menoHodnotitela, "—")}</div>`);
+    push(`<div class="hodnotenie-h" data-kind="heading">${S.hodnotenie}</div>`, "heading");
+
+    CRITERIA[lang][data.role].forEach((c, i) => {
+      const body = data.criteria[data.role][i];
+      const bodyHtml = (body && body.trim() !== "")
+        ? `<div class="crit-body">${esc(body)}</div>`
+        : `<div class="crit-body ph">${esc(S.critPh)}</div>`;
+      blocks.push({ t: "row", html:
+        `<tr><td class="mark">${i + 1}.</td><td><span class="crit-head">${esc(c.head)}</span>${bodyHtml}</td></tr>` });
+    });
+
+    // extra section: oponent always; veduci only when "Iné skutočnosti" is enabled
+    if (data.role === "oponent" || (data.role === "veduci" && data.ineEnabled)) {
+      push(`<div class="block-h" data-kind="heading">${esc(EXTRA[lang][data.role])}:</div>`, "heading");
+      blocks.push(textBlock(data.extra[data.role]));
+    }
+
+    push(`<div class="block-h" data-kind="heading">${esc(S.originality)}</div>`, "heading");
+    blocks.push(textBlock(data.originalita));
+
+    push(`<div class="recommend">${S.recommend}</div>`);
+
+    push(`<div class="footer-sign"><div class="date">${esc(S.date)} ${data.datum ? esc(formatDate(data.datum)) : '<span class="ph">…</span>'}</div><div class="sign"><span class="dots">...........................................</span><span class="cap">${esc(S.sign)}</span></div></div>`);
+
+    return blocks;
+  }
+
+  function textBlock(txt) {
+    if (txt && txt.trim() !== "") return { t: "text", text: txt };
+    return { t: "html", html: '<div class="free-text"><span class="ph">…</span></div>' };
+  }
+
+  function nodeFromHTML(html) {
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html.trim();
+    return tpl.content.firstElementChild;
+  }
+  function rowFromHTML(html) {
+    const t = document.createElement("table");
+    t.innerHTML = "<tbody>" + html + "</tbody>";
+    return t.querySelector("tr");
+  }
+  function makeTable() {
+    const t = document.createElement("table");
+    t.className = "assess";
+    t.innerHTML = '<colgroup><col style="width:8.7mm"><col></colgroup><tbody></tbody>';
+    return t;
+  }
+
+  // Distribute blocks across as many A4 pages as needed (Word-like auto pagination).
+  function renderPage() {
+    const pagesEl = document.getElementById("pages");
+    const blocks = buildBlocks();
+    pagesEl.lang = data.docLang;   // the document is in the DOCUMENT language (independent of UI <html lang>)
+    pagesEl.innerHTML = "";
+
+    let inner = null, curTbody = null, pageCount = 0;
+    const MAX_PAGES = 60;   // hard backstop against runaway pagination (never hit by real posudky)
+
+    function newPage() {
+      if (pageCount >= MAX_PAGES) return false;   // refuse (caller dumps the remainder as ONE node, see addText/splitRow)
+      pageCount++;
+      const page = document.createElement("div");
+      page.className = "page";
+      inner = document.createElement("div");
+      inner.className = "page-inner";
+      page.appendChild(inner);
+      pagesEl.appendChild(page);
+      curTbody = null;
+      return true;
+    }
+    // start a new page carrying `carried`; drop the page we leave if it became empty (no blank sheet)
+    function freshPageCarrying(carried) {
+      const leaving = inner;
+      newPage();
+      if (leaving !== inner && leaving.children.length === 0 && leaving.parentNode)
+        pagesEl.removeChild(leaving.parentNode);
+      if (carried) inner.appendChild(carried);
+    }
+    // .page-inner has a fixed height, so scrollHeight is only > clientHeight when content overflows.
+    // (No slack subtraction: clientHeight floors scrollHeight, so any slack makes this always true.)
+    function over() { return inner.scrollHeight > inner.clientHeight; }
+    // pull a trailing heading (or the recommendation line) off the current page so it
+    // travels to the next page together with the block that follows it
+    function pluckCarry() {
+      const last = inner.lastElementChild;
+      if (last && ((last.getAttribute && last.getAttribute("data-kind") === "heading") ||
+                   (last.classList && last.classList.contains("recommend")))) {
+        inner.removeChild(last);
+        return last;
+      }
+      return null;
+    }
+    function startTable() {
+      const tbl = makeTable();
+      inner.appendChild(tbl);
+      curTbody = tbl.tBodies[0];
+    }
+    // Fill `el` (already laid out on the current page) with the largest prefix of `text`
+    // that does NOT overflow; return the unused remainder. Word boundaries via binary
+    // search, then a code-point split for a single token taller than a whole page.
+    function fitInto(el, text) {
+      el.textContent = text;
+      if (!over()) return "";
+      const toks = text.split(/(\s+)/);
+      const join = n => toks.slice(0, n).join("");
+      let lo = 0, hi = toks.length, best = 0;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        el.textContent = join(mid);
+        if (over()) hi = mid - 1; else { best = mid; lo = mid + 1; }
+      }
+      if (best === 0) {                          // even the first token overflows → split by code points
+        const chars = Array.from(toks[0]);       // Array.from = code points, never splits a surrogate pair
+        let clo = 1, chi = chars.length, cbest = 0;
+        while (clo <= chi) {
+          const cmid = (clo + chi) >> 1;
+          el.textContent = chars.slice(0, cmid).join("");
+          if (over()) chi = cmid - 1; else { cbest = cmid; clo = cmid + 1; }
+        }
+        if (cbest === 0) cbest = 1;              // guarantee forward progress
+        el.textContent = chars.slice(0, cbest).join("");
+        toks[0] = chars.slice(cbest).join("");
+        return toks.join("");
+      }
+      el.textContent = join(best);
+      return toks.slice(best).join("");
+    }
+    function addText(text) {
+      const div = document.createElement("div");
+      div.className = "free-text";
+      div.textContent = text;
+      inner.appendChild(div);
+      if (!over()) return;
+      if (inner.children.length > 1) {                 // move whole paragraph to a new page
+        inner.removeChild(div);
+        const carried = pluckCarry();
+        freshPageCarrying(carried);
+        inner.appendChild(div);
+        if (!over()) return;
+      }
+      inner.removeChild(div);                           // too tall for one page → split across pages
+      let remaining = text;
+      while (remaining !== "") {
+        const seg = document.createElement("div");
+        seg.className = "free-text";
+        inner.appendChild(seg);
+        const before = remaining;
+        remaining = fitInto(seg, remaining);
+        if (remaining === before) { seg.textContent = remaining; remaining = ""; }   // safety
+        if (remaining !== "") {
+          remaining = remaining.replace(/^[^\S\n]+/, "");
+          // page cap hit → dump the whole rest into this one node (never split per-codepoint across a refused page)
+          if (remaining && !newPage()) { seg.textContent = before; remaining = ""; }
+        }
+      }
+    }
+    // Split an over-tall assessment row: keep its number + heading on the first page, then
+    // continue the body text in head-less continuation rows on the following pages.
+    function splitRow(tr) {
+      const bodyDiv = tr.querySelector(".crit-body");
+      if (!bodyDiv || bodyDiv.classList.contains("ph")) return;   // empty/placeholder → nothing to split
+      let lastBody = bodyDiv;
+      let remaining = fitInto(bodyDiv, bodyDiv.textContent);
+      while (remaining !== "") {
+        remaining = remaining.replace(/^[^\S\n]+/, "");
+        if (remaining === "") break;
+        if (!newPage()) { lastBody.textContent += "\n" + remaining; remaining = ""; break; }   // page cap → dump rest as one node
+        startTable();
+        const cont = rowFromHTML('<tr><td class="mark"></td><td><div class="crit-body crit-cont"></div></td></tr>');
+        curTbody.appendChild(cont);
+        lastBody = cont.querySelector(".crit-body");
+        const before = remaining;
+        remaining = fitInto(lastBody, remaining);
+        if (remaining === before) break;                          // safety
+      }
+    }
+
+    newPage();
+
+    for (const b of blocks) {
+      if (b.t === "row") {
+        if (!curTbody) startTable();
+        const tr = rowFromHTML(b.html);
+        curTbody.appendChild(tr);
+        if (over()) {
+          if (curTbody.children.length > 1) {          // other rows already here → row to next page
+            curTbody.removeChild(tr);
+            newPage();
+            startTable();
+            curTbody.appendChild(tr);
+          } else {                                     // lone row overflows → move table (+heading) over
+            const tbl = curTbody.parentNode;
+            if (inner.children.length > 1) {
+              inner.removeChild(tbl);
+              const carried = pluckCarry();
+              freshPageCarrying(carried);
+              inner.appendChild(tbl);
+              curTbody = tbl.tBodies[0];
+            }
+          }
+          if (over()) splitRow(tr);                    // still too tall → split the body across pages
+        }
+      } else if (b.t === "text") {
+        curTbody = null;
+        addText(b.text);
+      } else {
+        curTbody = null;
+        const node = nodeFromHTML(b.html);
+        inner.appendChild(node);
+        if (over() && inner.children.length > 1) {
+          inner.removeChild(node);
+          const carried = pluckCarry();
+          freshPageCarrying(carried);
+          inner.appendChild(node);
+        }
+      }
+    }
+  }
+
+  /* ---------------- Split layout: resizable divider + collapsible preview ---------------- */
+
+  const MIN_FORM = 300, MIN_PREVIEW = 320, DIVIDER_W = 10;
+  const workspaceEl = document.querySelector(".workspace");
+  const dividerEl = document.getElementById("divider");
+  const dividerToggleEl = document.getElementById("dividerToggle");
+  const previewPanelEl = document.getElementById("preview-panel");
+
+  const isStacked = () => window.matchMedia("(max-width: 1340px)").matches;   // keep in sync with the @media breakpoint
+
+  // size the form column from data.formW, clamped to the current window. persist=true stores the
+  // clamped value (drag/keyboard); persist=false is display-only (resize/init) so a temporarily
+  // narrow window doesn't permanently shrink the user's chosen width.
+  function applyFormW(persist) {
+    if (data.previewCollapsed) { workspaceEl.style.removeProperty("--form-w"); return; }
+    const total = workspaceEl.getBoundingClientRect().width;
+    const max = Math.max(MIN_FORM, total - DIVIDER_W - MIN_PREVIEW);
+    const w = Math.min(Math.max(data.formW, MIN_FORM), max);
+    if (persist) data.formW = w;
+    workspaceEl.style.setProperty("--form-w", w + "px");
+    dividerEl.setAttribute("aria-valuenow", String(total > 0 ? Math.round(w / total * 100) : 50));
+  }
+
+  function applyLayout() {
+    const hidden = !!data.previewCollapsed;
+    workspaceEl.classList.toggle("preview-collapsed", hidden);
+    applyFormW(false);                                  // sets aria-valuenow when expanded
+    if (hidden) {
+      dividerEl.setAttribute("aria-valuenow", "100");   // form fills the row when the preview is collapsed
+      dividerEl.setAttribute("aria-disabled", "true");  // resize is inert while collapsed
+      dividerEl.setAttribute("tabindex", "-1");         // …so drop the dead tab stop (arrows do nothing here)
+    } else {
+      dividerEl.removeAttribute("aria-disabled");
+      dividerEl.setAttribute("tabindex", "0");          // resizable again → restore the keyboard stop
+    }
+    // remove the preview's tab stop AND take it out of the a11y/pointer tree, but only when it is
+    // ACTUALLY hidden (collapsed AND not stacked — in stacked mode @media forces it visible regardless
+    // of the collapsed class). inert is a no-op on old engines, so tabindex keeps the focus guarantee.
+    const reallyHidden = hidden && !isStacked();
+    previewPanelEl.setAttribute("tabindex", reallyHidden ? "-1" : "0");
+    previewPanelEl.inert = reallyHidden;
+    dividerToggleEl.title = tStr(hidden ? "showPdf" : "hidePdf");
+    dividerToggleEl.setAttribute("aria-label", dividerToggleEl.title);
+    dividerToggleEl.setAttribute("aria-expanded", String(!hidden));
+  }
+
+  function bindLayout() {
+    let dragging = false;
+    dividerEl.addEventListener("pointerdown", e => {
+      if (e.button !== 0 || isStacked() || data.previewCollapsed) return;
+      if (dividerToggleEl.contains(e.target)) return;   // the toggle button handles its own click
+      dragging = true;
+      dividerEl.classList.add("dragging");
+      document.body.classList.add("col-resizing");
+      try { dividerEl.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+    dividerEl.addEventListener("pointermove", e => {
+      if (!dragging) return;
+      data.formW = e.clientX - workspaceEl.getBoundingClientRect().left - DIVIDER_W / 2;
+      applyFormW(true);
+    });
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      dividerEl.classList.remove("dragging");
+      document.body.classList.remove("col-resizing");
+      try { dividerEl.releasePointerCapture(e.pointerId); } catch (_) {}
+      save();
+    }
+    dividerEl.addEventListener("pointerup", endDrag);
+    dividerEl.addEventListener("pointercancel", endDrag);
+
+    // keyboard resize (WAI-ARIA window-splitter pattern)
+    dividerEl.addEventListener("keydown", e => {
+      if (e.target !== dividerEl) return;   // ignore arrow keys that bubble up from the nested toggle button
+      if (isStacked() || data.previewCollapsed) return;
+      const step = e.shiftKey ? 64 : 24;
+      if (e.key === "ArrowLeft") data.formW -= step;
+      else if (e.key === "ArrowRight") data.formW += step;
+      else return;
+      e.preventDefault();
+      applyFormW(true); save();
+    });
+
+    dividerToggleEl.addEventListener("click", e => {
+      e.stopPropagation();
+      data.previewCollapsed = !data.previewCollapsed;
+      applyLayout(); save();
+    });
+  }
+
+  /* ---------------- Wiring ---------------- */
+
+  function bindSimpleInputs() {
+    [
+      ["#f-nazov", "nazovPrace"],
+      ["#f-hodnotitel", "menoHodnotitela"],
+      ["#f-originalita", "originalita"],
+      ["#f-znamka", "znamka"]
+    ].forEach(([sel, key]) => {
+      const el = $(sel);
+      el.addEventListener("input", () => {
+        data[key] = el.value;
+        if (el.tagName === "TEXTAREA") autoGrow(el);
+        renderPage(); save();
+      });
+    });
+
+    $("#f-student").addEventListener("input", () => {
+      data.menoStudenta = $("#f-student").value;
+      if (!data.pdfNazovTouched) $("#f-pdfnazov").value = effectivePdfName();   // keep the auto PDF name live
+      renderPage(); save();
+    });
+
+    $("#f-program").addEventListener("input", () => {
+      data.studijnyProgram = $("#f-program").value;
+      data.programTouched = true;        // user's own value now wins over the localized default
+      renderPage(); save();
+    });
+
+    $("#f-datum").addEventListener("input", () => {
+      data.datum = $("#f-datum").value;
+      data.datumTouched = true;          // remember the user's explicit choice
+      renderPage(); save();
+    });
+
+    $("#f-pdfnazov").addEventListener("input", () => {
+      data.pdfNazov = $("#f-pdfnazov").value;   // used as the PDF name at print time (see beforeprint)
+      data.pdfNazovTouched = true;              // stop auto-generating once the user edits it
+      save();
+    });
+
+    $("#f-extra").addEventListener("input", () => {
+      data.extra[data.role] = $("#f-extra").value;
+      autoGrow($("#f-extra"));
+      renderPage(); save();
+    });
+
+    // when a collapsed group is expanded, re-fit its textareas (scrollHeight is 0 while hidden)
+    document.querySelectorAll("details.group").forEach(d => {
+      d.addEventListener("toggle", () => {
+        if (d.open) d.querySelectorAll("textarea").forEach(autoGrow);
+      });
+    });
+
+    // re-fit visible auto-grow textareas when the form width changes (wrapping → new height)
+    let resizeTimer = null;
+    window.addEventListener("resize", () => {
+      applyLayout();   // keep the split valid AND re-sync the preview tab stop across the 1340px breakpoint
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        document.querySelectorAll("details.group[open] textarea").forEach(autoGrow);
+      }, 150);
+    });
+
+    $("#f-ine-enabled").addEventListener("change", () => {
+      data.ineEnabled = $("#f-ine-enabled").checked;
+      syncFormFields(); renderPage(); save();
+    });
+
+    document.querySelectorAll("#seg-odporucam button").forEach(b => {
+      b.addEventListener("click", () => {
+        data.odporucam = b.dataset.odp === "1";
+        syncFormFields(); renderPage(); save();
+      });
+    });
+
+    document.querySelectorAll("#seg-doclang button").forEach(b => {
+      b.addEventListener("click", () => {
+        data.docLang = b.dataset.doclang;   // re-renders the document only (UI unchanged)
+        rebuild();
+      });
+    });
+    document.querySelectorAll("#seg-uilang button").forEach(b => {
+      b.addEventListener("click", () => {
+        data.uiLang = b.dataset.uilang;     // re-renders the app chrome (document unchanged)
+        rebuild();
+      });
+    });
+    document.querySelectorAll("#seg-level button").forEach(b => {
+      b.addEventListener("click", () => {
+        data.level = b.dataset.level;
+        rebuild();
+      });
+    });
+    document.querySelectorAll("#seg-role button").forEach(b => {
+      b.addEventListener("click", () => {
+        data.role = b.dataset.role;
+        rebuild();
+      });
+    });
+
+    // arrow-key navigation for the segmented radio controls (WAI-ARIA radiogroup)
+    function wireRadioKeys(seg) {
+      if (!seg) return;
+      seg.addEventListener("keydown", e => {
+        if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].indexOf(e.key) === -1) return;
+        const btns = Array.prototype.slice.call(seg.querySelectorAll("button"));
+        const checked = btns.findIndex(b => b.getAttribute("aria-checked") === "true");
+        let i = btns.indexOf(document.activeElement);
+        if (i < 0) i = checked;
+        e.preventDefault();
+        if (e.key === "Home") i = 0;
+        else if (e.key === "End") i = btns.length - 1;
+        else if (e.key === "ArrowLeft" || e.key === "ArrowUp") i = (i - 1 + btns.length) % btns.length;
+        else i = (i + 1) % btns.length;
+        btns[i].focus();
+        if (i !== checked) btns[i].click();   // re-render only when the selection actually changes
+      });
+    }
+    ["#seg-doclang", "#seg-uilang", "#seg-level", "#seg-role", "#seg-odporucam"].forEach(s => wireRadioKeys($(s)));
+
+    $("#btnPrint").addEventListener("click", () => {
+      alert(tStr("printAlert"));
+      document.title = pdfFileName();    // set synchronously too — some engines snapshot the print-job title BEFORE beforeprint fires
+      window.print();                    // beforeprint also sets it (Ctrl+P path); afterprint restores "ReviewAPP"
+    });
+
+    $("#btnClear").addEventListener("click", () => {
+      if (confirm(tStr("clearConfirm"))) {
+        const dl = data.docLang, ul = data.uiLang, lvl = data.level, role = data.role;
+        const fw = data.formW, pc = data.previewCollapsed;
+        data = defaultData();
+        data.docLang = dl; data.uiLang = ul; data.level = lvl; data.role = role;   // keep languages/type/role
+        data.formW = fw; data.previewCollapsed = pc;                               // keep split-layout prefs
+        rebuild(); save();
+      }
+    });
+  }
+
+  function rebuild() {
+    applyLang();
+    renderCriteriaForm();
+    syncFormFields();
+    renderPage();
+    applyLayout();   // keep the split applied + toggle title in the active UI language
+    save();
+  }
+
+  /* ---------------- Init ---------------- */
+  bindSimpleInputs();                 // wire toolbar/Clear FIRST so recovery is always possible
+  bindLayout();                       // resizable divider + collapsible preview
+  try {
+    applyLang();
+    renderCriteriaForm();
+    syncFormFields();
+    renderPage();
+    applyLayout();
+  } catch (e) {
+    // self-heal: a corrupt persisted state must never brick the whole UI
+    data = defaultData();
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    try { applyLang(); renderCriteriaForm(); syncFormFields(); renderPage(); applyLayout(); } catch (_) {}  // never re-throw out of init
+  }
+  // save-status starts on its idle (or storage-warning) text in the active language
+  document.getElementById("saveStatus").textContent = storageOK ? tStr("savingAuto") : tStr("storageWarn");
+  if (!storageOK) document.getElementById("saveAlert").textContent = tStr("storageWarn");   // announce once if storage is dead
+
+  // persisted state is now fully applied → reveal the UI (the first visible paint is correct,
+  // so there is no Bakalárska→Diplomová / SK→EN flash). The <head> listener is a backstop.
+  document.documentElement.classList.remove("pf-booting");
+})();
+</script>
+</body>
+</html>
